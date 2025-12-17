@@ -7,7 +7,7 @@ use config::Config;
 use eframe::egui;
 use openai::OpenAIClient;
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver};
 
 fn main() -> eframe::Result<()> {
     // Load config and apply command line arguments
@@ -15,10 +15,14 @@ fn main() -> eframe::Result<()> {
     let mut config = Config::load();
     config.apply_args(&args);
 
+    // Load application icon
+    let icon_data = load_icon();
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 400.0])
-            .with_resizable(false),
+            .with_resizable(false)
+            .with_icon(icon_data),
         ..Default::default()
     };
 
@@ -82,6 +86,9 @@ struct WinhApp {
     settings_api_key: String,
     settings_model: String,
     settings_silence_duration: f32,
+
+    // Error tracking
+    last_error: Option<String>,
 }
 
 impl WinhApp {
@@ -100,6 +107,7 @@ impl WinhApp {
             transcription_receiver: None,
             is_transcribing: false,
             show_settings: false,
+            last_error: None,
         }
     }
 }
@@ -111,10 +119,12 @@ impl eframe::App for WinhApp {
             if let Ok(message) = receiver.try_recv() {
                 match message {
                     TranscriptionMessage::InProgress => {
-                        // Already handled
+                        self.status_message = "Transcribing audio...".to_string();
+                        self.last_error = None;
                     }
                     TranscriptionMessage::Success(text) => {
                         self.transcribed_text = text.clone();
+                        self.last_error = None;
 
                         // Copy to clipboard
                         match arboard::Clipboard::new() {
@@ -148,7 +158,8 @@ impl eframe::App for WinhApp {
                         self.transcription_receiver = None;
                     }
                     TranscriptionMessage::Error(error) => {
-                        self.status_message = format!("Transcription failed: {}", error);
+                        self.status_message = format!("❌ Transcription failed: {}", error);
+                        self.last_error = Some(error.clone());
                         self.is_transcribing = false;
                         self.transcription_receiver = None;
                         eprintln!("Transcription error: {}", error);
@@ -264,6 +275,21 @@ impl eframe::App for WinhApp {
                     .show(ui, |ui| {
                         ui.text_edit_multiline(&mut self.transcribed_text);
                     });
+
+                ui.add_space(10.0);
+
+                // Error display area
+                if let Some(error) = &self.last_error {
+                    ui.colored_label(egui::Color32::RED, format!("❌ Error: {}", error));
+                }
+
+                // Warning if API key is not set
+                if self.config.api_key.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 165, 0),
+                        "⚠ API key not set. Please configure in Settings.",
+                    );
+                }
             });
         });
 
@@ -354,7 +380,7 @@ impl WinhApp {
             // Save audio to WAV file
             match save_audio_to_wav(&audio_data, sample_rate) {
                 Ok(path) => {
-                    let duration = audio_data.len() as f32 / sample_rate as f32;
+                    let _duration = audio_data.len() as f32 / sample_rate as f32;
                     self.audio_file_path = Some(path.clone());
                     println!("Audio file saved: {:?}", path);
 
@@ -391,6 +417,9 @@ impl WinhApp {
 
         // Spawn background thread for transcription
         std::thread::spawn(move || {
+            // Send InProgress message
+            let _ = sender.send(TranscriptionMessage::InProgress);
+
             let client = OpenAIClient::new(api_key, model);
 
             match client.transcribe_audio(&audio_path) {
@@ -402,5 +431,18 @@ impl WinhApp {
                 }
             }
         });
+    }
+}
+
+fn load_icon() -> egui::IconData {
+    let icon_bytes = include_bytes!("icon.png");
+    let image = image::load_from_memory(icon_bytes).expect("Failed to load icon");
+    let rgba = image.to_rgba8();
+    let (width, height) = rgba.dimensions();
+
+    egui::IconData {
+        rgba: rgba.into_raw(),
+        width,
+        height,
     }
 }

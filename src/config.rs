@@ -24,8 +24,7 @@ impl Default for Config {
 impl Config {
     /// Get the config file path
     pub fn config_path() -> Result<PathBuf, String> {
-        let config_dir = dirs::config_dir()
-            .ok_or("Failed to get config directory")?;
+        let config_dir = dirs::config_dir().ok_or("Failed to get config directory")?;
 
         let app_config_dir = config_dir.join("winh");
 
@@ -44,17 +43,15 @@ impl Config {
             Ok(path) => {
                 if path.exists() {
                     match fs::read_to_string(&path) {
-                        Ok(content) => {
-                            match serde_json::from_str(&content) {
-                                Ok(config) => {
-                                    println!("Config loaded from: {:?}", path);
-                                    return config;
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to parse config: {}", e);
-                                }
+                        Ok(content) => match serde_json::from_str(&content) {
+                            Ok(config) => {
+                                println!("Config loaded from: {:?}", path);
+                                return config;
                             }
-                        }
+                            Err(e) => {
+                                eprintln!("Failed to parse config: {}", e);
+                            }
+                        },
                         Err(e) => {
                             eprintln!("Failed to read config file: {}", e);
                         }
@@ -77,8 +74,7 @@ impl Config {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        fs::write(&path, json)
-            .map_err(|e| format!("Failed to write config file: {}", e))?;
+        fs::write(&path, json).map_err(|e| format!("Failed to write config file: {}", e))?;
 
         println!("Config saved to: {:?}", path);
         Ok(())

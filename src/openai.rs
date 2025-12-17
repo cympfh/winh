@@ -75,7 +75,7 @@ impl OpenAIClient {
             .text("model", self.model.clone())
             .text(
                 "prompt",
-                "以下は日本語で話された音声データです。テキストに書き起こせ。---".to_string(),
+                "A Japanese is speaking. Transcribe it.".to_string(),
             );
 
         // Send request

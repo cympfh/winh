@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::path::PathBuf;
 
 pub struct AudioRecorder {
     audio_buffer: Arc<Mutex<Vec<f32>>>,
@@ -12,46 +12,6 @@ pub struct AudioRecorder {
     recording_start_time: Arc<Mutex<Option<Instant>>>,
 }
 
-pub struct SilenceDetector {
-    threshold: f32,
-    silence_duration: Duration,
-    last_sound_time: Arc<Mutex<Instant>>,
-}
-
-impl SilenceDetector {
-    pub fn new(threshold: f32, silence_duration_secs: f32) -> Self {
-        Self {
-            threshold,
-            silence_duration: Duration::from_secs_f32(silence_duration_secs),
-            last_sound_time: Arc::new(Mutex::new(Instant::now())),
-        }
-    }
-
-    pub fn is_silent(&self) -> bool {
-        let last_sound = self.last_sound_time.lock().unwrap();
-        last_sound.elapsed() >= self.silence_duration
-    }
-
-    pub fn update_with_samples(&self, samples: &[f32]) {
-        // Check if any sample exceeds the threshold
-        let has_sound = samples.iter().any(|&sample| sample.abs() > self.threshold);
-
-        if has_sound {
-            let mut last_sound = self.last_sound_time.lock().unwrap();
-            *last_sound = Instant::now();
-        }
-    }
-
-    pub fn get_silence_duration(&self) -> Duration {
-        let last_sound = self.last_sound_time.lock().unwrap();
-        last_sound.elapsed()
-    }
-
-    pub fn reset(&self) {
-        let mut last_sound = self.last_sound_time.lock().unwrap();
-        *last_sound = Instant::now();
-    }
-}
 
 impl AudioRecorder {
     pub fn new() -> Result<Self, String> {
@@ -65,16 +25,6 @@ impl AudioRecorder {
         })
     }
 
-    pub fn new_with_threshold(silence_threshold: f32) -> Result<Self, String> {
-        Ok(Self {
-            audio_buffer: Arc::new(Mutex::new(Vec::new())),
-            stream: None,
-            sample_rate: 0,
-            last_sound_time: Arc::new(Mutex::new(Instant::now())),
-            silence_threshold,
-            recording_start_time: Arc::new(Mutex::new(None)),
-        })
-    }
 
     pub fn is_silent(&self, silence_duration_secs: f32) -> bool {
         // Check if we're still in the grace period (3 seconds after recording starts)
@@ -138,13 +88,33 @@ impl AudioRecorder {
         let threshold = self.silence_threshold;
 
         let stream = match config.sample_format() {
-            cpal::SampleFormat::F32 => self.build_input_stream::<f32>(&device, &config.into(), buffer_clone, last_sound_clone, threshold),
-            cpal::SampleFormat::I16 => self.build_input_stream::<i16>(&device, &config.into(), buffer_clone, last_sound_clone, threshold),
-            cpal::SampleFormat::U16 => self.build_input_stream::<u16>(&device, &config.into(), buffer_clone, last_sound_clone, threshold),
+            cpal::SampleFormat::F32 => self.build_input_stream::<f32>(
+                &device,
+                &config.into(),
+                buffer_clone,
+                last_sound_clone,
+                threshold,
+            ),
+            cpal::SampleFormat::I16 => self.build_input_stream::<i16>(
+                &device,
+                &config.into(),
+                buffer_clone,
+                last_sound_clone,
+                threshold,
+            ),
+            cpal::SampleFormat::U16 => self.build_input_stream::<u16>(
+                &device,
+                &config.into(),
+                buffer_clone,
+                last_sound_clone,
+                threshold,
+            ),
             _ => return Err("Unsupported sample format".to_string()),
         }?;
 
-        stream.play().map_err(|e| format!("Failed to play stream: {}", e))?;
+        stream
+            .play()
+            .map_err(|e| format!("Failed to play stream: {}", e))?;
         self.stream = Some(stream);
 
         Ok(())
@@ -255,23 +225,30 @@ pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf
     for &sample in trimmed_data {
         // Convert f32 to i16
         let sample_i16 = (sample * i16::MAX as f32) as i16;
-        writer.write_sample(sample_i16)
+        writer
+            .write_sample(sample_i16)
             .map_err(|e| format!("Failed to write sample: {}", e))?;
     }
 
-    writer.finalize()
+    writer
+        .finalize()
         .map_err(|e| format!("Failed to finalize WAV file: {}", e))?;
 
     // Keep the file alive by forgetting the tempfile handle
     std::mem::forget(temp_file);
 
-    println!("Audio saved to: {:?} (trimmed {} samples from start)", temp_path, audio_data.len() - trimmed_data.len());
+    println!(
+        "Audio saved to: {:?} (trimmed {} samples from start)",
+        temp_path,
+        audio_data.len() - trimmed_data.len()
+    );
     Ok(temp_path)
 }
 
 fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize) -> &[f32] {
     // Find the first sample that exceeds the threshold
-    let first_sound_idx = audio_data.iter()
+    let first_sound_idx = audio_data
+        .iter()
         .position(|&sample| sample.abs() > threshold)
         .unwrap_or(0);
 

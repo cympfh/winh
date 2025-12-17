@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    name: Build and Release Windows Binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build for Windows
+        run: cargo build --release --target x86_64-pc-windows-gnu
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Prepare release binary
+        run: |
+          mkdir -p release
+          cp target/x86_64-pc-windows-gnu/release/winh.exe release/
+          cd release
+          zip winh-${{ steps.get_version.outputs.VERSION }}-windows-x86_64.zip winh.exe
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/winh-${{ steps.get_version.outputs.VERSION }}-windows-x86_64.zip
+          body: |
+            ## winh ${{ steps.get_version.outputs.VERSION }}
+
+            Windows 11向け音声入力・文字起こしGUIアプリケーション
+
+            ### ダウンロード
+
+            - `winh-${{ steps.get_version.outputs.VERSION }}-windows-x86_64.zip` - Windows 11 (64-bit)
+
+            ### 使い方
+
+            1. ZIPファイルをダウンロードして解凍
+            2. `winh.exe` を実行
+            3. 設定画面でOpenAI API Keyを設定
+            4. スタートボタンで録音開始
+
+            詳細は [README.md](https://github.com/${{ github.repository }}/blob/main/README.md) を参照してください。
+
+            ### 必要要件
+
+            - Windows 11
+            - OpenAI API Key (https://platform.openai.com/api-keys)
+            - マイク入力デバイス
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
