@@ -9,6 +9,7 @@ pub struct AudioRecorder {
     sample_rate: u32,
     last_sound_time: Arc<Mutex<Instant>>,
     silence_threshold: f32,
+    recording_start_time: Arc<Mutex<Option<Instant>>>,
 }
 
 pub struct SilenceDetector {
@@ -60,6 +61,7 @@ impl AudioRecorder {
             sample_rate: 0,
             last_sound_time: Arc::new(Mutex::new(Instant::now())),
             silence_threshold: 0.01, // Default threshold
+            recording_start_time: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -70,10 +72,20 @@ impl AudioRecorder {
             sample_rate: 0,
             last_sound_time: Arc::new(Mutex::new(Instant::now())),
             silence_threshold,
+            recording_start_time: Arc::new(Mutex::new(None)),
         })
     }
 
     pub fn is_silent(&self, silence_duration_secs: f32) -> bool {
+        // Check if we're still in the grace period (3 seconds after recording starts)
+        let start_time = self.recording_start_time.lock().unwrap();
+        if let Some(start) = *start_time {
+            if start.elapsed() < Duration::from_secs(3) {
+                // Still in grace period, not silent
+                return false;
+            }
+        }
+
         let last_sound = self.last_sound_time.lock().unwrap();
         last_sound.elapsed() >= Duration::from_secs_f32(silence_duration_secs)
     }
@@ -113,6 +125,12 @@ impl AudioRecorder {
             buffer.clear();
         }
         self.reset_silence_timer();
+
+        // Set recording start time for grace period
+        {
+            let mut start_time = self.recording_start_time.lock().unwrap();
+            *start_time = Some(Instant::now());
+        }
 
         // Create the input stream
         let buffer_clone = Arc::clone(&self.audio_buffer);
@@ -203,6 +221,16 @@ impl Default for AudioRecorder {
 }
 
 pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf, String> {
+    // Trim leading silence but keep 0.2 seconds
+    let silence_threshold = 0.01;
+    let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
+
+    let trimmed_data = trim_leading_silence(audio_data, silence_threshold, keep_samples);
+
+    if trimmed_data.is_empty() {
+        return Err("Audio data is empty after trimming".to_string());
+    }
+
     // Create a temporary file
     let temp_file = tempfile::Builder::new()
         .prefix("winh_audio_")
@@ -224,7 +252,7 @@ pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf
         .map_err(|e| format!("Failed to create WAV writer: {}", e))?;
 
     // Write samples
-    for &sample in audio_data {
+    for &sample in trimmed_data {
         // Convert f32 to i16
         let sample_i16 = (sample * i16::MAX as f32) as i16;
         writer.write_sample(sample_i16)
@@ -237,6 +265,18 @@ pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf
     // Keep the file alive by forgetting the tempfile handle
     std::mem::forget(temp_file);
 
-    println!("Audio saved to: {:?}", temp_path);
+    println!("Audio saved to: {:?} (trimmed {} samples from start)", temp_path, audio_data.len() - trimmed_data.len());
     Ok(temp_path)
+}
+
+fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize) -> &[f32] {
+    // Find the first sample that exceeds the threshold
+    let first_sound_idx = audio_data.iter()
+        .position(|&sample| sample.abs() > threshold)
+        .unwrap_or(0);
+
+    // Calculate start index: go back by keep_samples, but not before 0
+    let start_idx = first_sound_idx.saturating_sub(keep_samples);
+
+    &audio_data[start_idx..]
 }

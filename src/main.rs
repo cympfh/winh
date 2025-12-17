@@ -1,11 +1,11 @@
 mod audio;
-mod openai;
 mod config;
+mod openai;
 
-use eframe::egui;
-use audio::{AudioRecorder, save_audio_to_wav};
-use openai::OpenAIClient;
+use audio::{save_audio_to_wav, AudioRecorder};
 use config::Config;
+use eframe::egui;
+use openai::OpenAIClient;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
@@ -32,9 +32,7 @@ fn main() -> eframe::Result<()> {
             // Add Japanese font
             fonts.font_data.insert(
                 "japanese".to_owned(),
-                egui::FontData::from_static(include_bytes!(
-                    "../fonts/NotoSansJP-Regular.ttf"
-                )),
+                egui::FontData::from_static(include_bytes!("../fonts/NotoSansJP-Regular.ttf")),
             );
 
             // Set Japanese font as highest priority for proportional text
@@ -123,8 +121,13 @@ impl eframe::App for WinhApp {
                             Ok(mut clipboard) => {
                                 match clipboard.set_text(&text) {
                                     Ok(_) => {
-                                        self.status_message = "Transcription completed! Text copied to clipboard.".to_string();
-                                        println!("Transcription successful and copied to clipboard: {}", text);
+                                        self.status_message =
+                                            "Transcription completed! Text copied to clipboard."
+                                                .to_string();
+                                        println!(
+                                            "Transcription successful and copied to clipboard: {}",
+                                            text
+                                        );
                                     }
                                     Err(e) => {
                                         self.status_message = format!("Transcription completed, but clipboard copy failed: {}", e);
@@ -133,7 +136,10 @@ impl eframe::App for WinhApp {
                                 }
                             }
                             Err(e) => {
-                                self.status_message = format!("Transcription completed, but clipboard init failed: {}", e);
+                                self.status_message = format!(
+                                    "Transcription completed, but clipboard init failed: {}",
+                                    e
+                                );
                                 eprintln!("Failed to initialize clipboard: {}", e);
                             }
                         }
@@ -166,7 +172,10 @@ impl eframe::App for WinhApp {
                     ui.add_space(10.0);
 
                     ui.label("Silence Duration (seconds):");
-                    ui.add(egui::Slider::new(&mut self.settings_silence_duration, 0.5..=10.0));
+                    ui.add(egui::Slider::new(
+                        &mut self.settings_silence_duration,
+                        0.5..=10.0,
+                    ));
                     ui.add_space(10.0);
 
                     ui.horizontal(|ui| {
@@ -215,10 +224,7 @@ impl eframe::App for WinhApp {
 
                 // Status message
                 if !self.status_message.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(100, 150, 255),
-                        &self.status_message
-                    );
+                    ui.colored_label(egui::Color32::from_rgb(100, 150, 255), &self.status_message);
                 }
 
                 // Recording info (buffer size, sample rate)
@@ -236,9 +242,7 @@ impl eframe::App for WinhApp {
                 };
 
                 let button_size = egui::vec2(200.0, 80.0);
-                let button = egui::Button::new(
-                    egui::RichText::new(button_text).size(24.0)
-                );
+                let button = egui::Button::new(egui::RichText::new(button_text).size(24.0));
 
                 if ui.add_sized(button_size, button).clicked() {
                     self.is_recording = !self.is_recording;
@@ -283,7 +287,10 @@ impl eframe::App for WinhApp {
 
                 // Auto-stop if silence duration exceeded
                 if recorder.is_silent(self.config.silence_duration_secs) && buffer_size > 0 {
-                    println!("Silence detected for {:.1}s - auto-stopping", self.config.silence_duration_secs);
+                    println!(
+                        "Silence detected for {:.1}s - auto-stopping",
+                        self.config.silence_duration_secs
+                    );
                     self.is_recording = false;
                     self.on_stop_recording();
                 }
@@ -305,19 +312,17 @@ impl WinhApp {
         self.recording_info.clear();
 
         match AudioRecorder::new() {
-            Ok(mut recorder) => {
-                match recorder.start_recording() {
-                    Ok(_) => {
-                        self.status_message = "Recording... Speak now!".to_string();
-                        self.audio_recorder = Some(recorder);
-                    }
-                    Err(e) => {
-                        self.status_message = format!("Error: {}", e);
-                        self.is_recording = false;
-                        eprintln!("Failed to start recording: {}", e);
-                    }
+            Ok(mut recorder) => match recorder.start_recording() {
+                Ok(_) => {
+                    self.status_message = "Recording... Speak now!".to_string();
+                    self.audio_recorder = Some(recorder);
                 }
-            }
+                Err(e) => {
+                    self.status_message = format!("Error: {}", e);
+                    self.is_recording = false;
+                    eprintln!("Failed to start recording: {}", e);
+                }
+            },
             Err(e) => {
                 self.status_message = format!("Error: {}", e);
                 self.is_recording = false;
@@ -335,7 +340,10 @@ impl WinhApp {
             let sample_rate = recorder.get_sample_rate();
 
             println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
-            println!("Duration: {:.2} seconds", audio_data.len() as f32 / sample_rate as f32);
+            println!(
+                "Duration: {:.2} seconds",
+                audio_data.len() as f32 / sample_rate as f32
+            );
 
             if audio_data.is_empty() {
                 self.status_message = "No audio recorded".to_string();
@@ -352,7 +360,9 @@ impl WinhApp {
 
                     // Check if API key is set
                     if self.config.api_key.is_empty() {
-                        self.status_message = "Audio saved. Set API key in Settings to enable transcription.".to_string();
+                        self.status_message =
+                            "Audio saved. Set API key in Settings to enable transcription."
+                                .to_string();
                     } else {
                         // Start transcription in background thread
                         self.status_message = "Transcribing audio...".to_string();
