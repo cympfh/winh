@@ -108,6 +108,15 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 未定
 
+### 使用フォント
+
+このプロジェクトは以下のフォントを使用しています：
+
+- **Noto Sans JP**: SIL Open Font License 1.1
+  - Copyright 2014-2021 Adobe (http://www.adobe.com/)
+  - ライセンス全文: [fonts/OFL.txt](fonts/OFL.txt)
+  - 詳細: https://scripts.sil.org/OFL
+
 ## 開発者向け情報
 
 詳細な開発ガイドは [CLAUDE.md](CLAUDE.md) を参照してください。

@@ -1,13 +1,23 @@
 mod audio;
+mod openai;
+mod config;
 
 use eframe::egui;
 use audio::{AudioRecorder, save_audio_to_wav};
+use openai::OpenAIClient;
+use config::Config;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 fn main() -> eframe::Result<()> {
+    // Load config and apply command line arguments
+    let args: Vec<String> = std::env::args().collect();
+    let mut config = Config::load();
+    config.apply_args(&args);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 350.0])
+            .with_inner_size([400.0, 400.0])
             .with_resizable(false),
         ..Default::default()
     };
@@ -15,8 +25,43 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "winh - Voice Transcription",
         options,
-        Box::new(|_cc| Ok(Box::new(WinhApp::default()))),
+        Box::new(move |cc| {
+            // Setup Japanese font
+            let mut fonts = egui::FontDefinitions::default();
+
+            // Add Japanese font
+            fonts.font_data.insert(
+                "japanese".to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../fonts/NotoSansJP-Regular.ttf"
+                )),
+            );
+
+            // Set Japanese font as highest priority for proportional text
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, "japanese".to_owned());
+
+            // Set Japanese font as highest priority for monospace text
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .insert(0, "japanese".to_owned());
+
+            cc.egui_ctx.set_fonts(fonts);
+
+            Ok(Box::new(WinhApp::new(config)))
+        }),
     )
+}
+
+enum TranscriptionMessage {
+    InProgress,
+    Success(String),
+    Error(String),
 }
 
 struct WinhApp {
@@ -25,32 +70,147 @@ struct WinhApp {
     audio_recorder: Option<AudioRecorder>,
     status_message: String,
     recording_info: String,
-    silence_duration_secs: f32,
     audio_file_path: Option<PathBuf>,
+
+    // Config
+    config: Config,
+
+    // Background transcription
+    transcription_receiver: Option<Receiver<TranscriptionMessage>>,
+    is_transcribing: bool,
+
+    // Settings UI
+    show_settings: bool,
+    settings_api_key: String,
+    settings_model: String,
+    settings_silence_duration: f32,
 }
 
-impl Default for WinhApp {
-    fn default() -> Self {
+impl WinhApp {
+    fn new(config: Config) -> Self {
         Self {
             is_recording: false,
             transcribed_text: String::new(),
             audio_recorder: None,
             status_message: String::new(),
             recording_info: String::new(),
-            silence_duration_secs: 2.0, // Default 2 seconds
             audio_file_path: None,
+            settings_api_key: config.api_key.clone(),
+            settings_model: config.model.clone(),
+            settings_silence_duration: config.silence_duration_secs,
+            config,
+            transcription_receiver: None,
+            is_transcribing: false,
+            show_settings: false,
         }
     }
 }
 
 impl eframe::App for WinhApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for transcription results
+        if let Some(receiver) = &self.transcription_receiver {
+            if let Ok(message) = receiver.try_recv() {
+                match message {
+                    TranscriptionMessage::InProgress => {
+                        // Already handled
+                    }
+                    TranscriptionMessage::Success(text) => {
+                        self.transcribed_text = text.clone();
+
+                        // Copy to clipboard
+                        match arboard::Clipboard::new() {
+                            Ok(mut clipboard) => {
+                                match clipboard.set_text(&text) {
+                                    Ok(_) => {
+                                        self.status_message = "Transcription completed! Text copied to clipboard.".to_string();
+                                        println!("Transcription successful and copied to clipboard: {}", text);
+                                    }
+                                    Err(e) => {
+                                        self.status_message = format!("Transcription completed, but clipboard copy failed: {}", e);
+                                        eprintln!("Failed to copy to clipboard: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.status_message = format!("Transcription completed, but clipboard init failed: {}", e);
+                                eprintln!("Failed to initialize clipboard: {}", e);
+                            }
+                        }
+
+                        self.is_transcribing = false;
+                        self.transcription_receiver = None;
+                    }
+                    TranscriptionMessage::Error(error) => {
+                        self.status_message = format!("Transcription failed: {}", error);
+                        self.is_transcribing = false;
+                        self.transcription_receiver = None;
+                        eprintln!("Transcription error: {}", error);
+                    }
+                }
+            }
+        }
+
+        // Settings modal window
+        if self.show_settings {
+            egui::Window::new("Settings")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label("OpenAI API Key:");
+                    ui.text_edit_singleline(&mut self.settings_api_key);
+                    ui.add_space(10.0);
+
+                    ui.label("Model:");
+                    ui.text_edit_singleline(&mut self.settings_model);
+                    ui.add_space(10.0);
+
+                    ui.label("Silence Duration (seconds):");
+                    ui.add(egui::Slider::new(&mut self.settings_silence_duration, 0.5..=10.0));
+                    ui.add_space(10.0);
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            self.config.api_key = self.settings_api_key.clone();
+                            self.config.model = self.settings_model.clone();
+                            self.config.silence_duration_secs = self.settings_silence_duration;
+
+                            match self.config.save() {
+                                Ok(_) => {
+                                    self.status_message = "Settings saved!".to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message = format!("Failed to save settings: {}", e);
+                                }
+                            }
+
+                            self.show_settings = false;
+                        }
+
+                        if ui.button("Cancel").clicked() {
+                            // Revert to current config
+                            self.settings_api_key = self.config.api_key.clone();
+                            self.settings_model = self.config.model.clone();
+                            self.settings_silence_duration = self.config.silence_duration_secs;
+                            self.show_settings = false;
+                        }
+                    });
+                });
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
+                ui.add_space(10.0);
 
-                // Title
-                ui.heading("Voice Transcription");
+                // Header with title and settings button
+                ui.horizontal(|ui| {
+                    ui.heading("Voice Transcription");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("⚙ Settings").clicked() {
+                            self.show_settings = true;
+                        }
+                    });
+                });
                 ui.add_space(10.0);
 
                 // Status message
@@ -118,16 +278,21 @@ impl eframe::App for WinhApp {
 
                 self.recording_info = format!(
                     "Recording: {:.1}s | Silence: {:.1}s/{:.1}s",
-                    duration_secs, silence_elapsed, self.silence_duration_secs
+                    duration_secs, silence_elapsed, self.config.silence_duration_secs
                 );
 
                 // Auto-stop if silence duration exceeded
-                if recorder.is_silent(self.silence_duration_secs) && buffer_size > 0 {
-                    println!("Silence detected for {:.1}s - auto-stopping", self.silence_duration_secs);
+                if recorder.is_silent(self.config.silence_duration_secs) && buffer_size > 0 {
+                    println!("Silence detected for {:.1}s - auto-stopping", self.config.silence_duration_secs);
                     self.is_recording = false;
                     self.on_stop_recording();
                 }
             }
+            ctx.request_repaint();
+        }
+
+        // Keep updating UI while transcribing
+        if self.is_transcribing {
             ctx.request_repaint();
         }
     }
@@ -182,14 +347,17 @@ impl WinhApp {
             match save_audio_to_wav(&audio_data, sample_rate) {
                 Ok(path) => {
                     let duration = audio_data.len() as f32 / sample_rate as f32;
-                    self.status_message = format!(
-                        "Saved {:.2}s of audio to WAV",
-                        duration
-                    );
                     self.audio_file_path = Some(path.clone());
                     println!("Audio file saved: {:?}", path);
 
-                    // TODO: Phase 4 - Send to OpenAI API for transcription
+                    // Check if API key is set
+                    if self.config.api_key.is_empty() {
+                        self.status_message = "Audio saved. Set API key in Settings to enable transcription.".to_string();
+                    } else {
+                        // Start transcription in background thread
+                        self.status_message = "Transcribing audio...".to_string();
+                        self.start_transcription(path);
+                    }
                 }
                 Err(e) => {
                     self.status_message = format!("Failed to save audio: {}", e);
@@ -201,5 +369,28 @@ impl WinhApp {
         } else {
             self.status_message = "No recording found".to_string();
         }
+    }
+
+    fn start_transcription(&mut self, audio_path: PathBuf) {
+        let (sender, receiver) = channel();
+        self.transcription_receiver = Some(receiver);
+        self.is_transcribing = true;
+
+        let api_key = self.config.api_key.clone();
+        let model = self.config.model.clone();
+
+        // Spawn background thread for transcription
+        std::thread::spawn(move || {
+            let client = OpenAIClient::new(api_key, model);
+
+            match client.transcribe_audio(&audio_path) {
+                Ok(text) => {
+                    let _ = sender.send(TranscriptionMessage::Success(text));
+                }
+                Err(e) => {
+                    let _ = sender.send(TranscriptionMessage::Error(e.to_string()));
+                }
+            }
+        });
     }
 }
