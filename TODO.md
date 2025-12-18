@@ -12,6 +12,22 @@
     - Settings画面に ComboBox でデバイス選択UIを追加
     - 「Windows既定」を先頭に追加（デフォルトデバイスを使用）
     - `AudioRecorder::start_recording_with_device()` で指定デバイスを使用
+- [x] ショートカットキー対応（Ctrl+Shift+Hで録音開始）(2025-12-18)
+    - `global-hotkey` クレート (v0.6) を使用
+    - Ctrl+Shift+H で録音開始（録音中または文字起こし中は動作しない）
+    - 他のアプリケーションがフォーカスされている場合でも動作
+    - グローバルホットキーマネージャーをアプリケーションに統合
+    - 100ms間隔で定期的に再描画をリクエストしてイベント検知を保証
+- [x] ショートカットキーを自由に変更できる (2025-12-18)
+    - Config に `hotkey` フィールドを追加（デフォルト: "Ctrl+Shift+H"）
+    - ホットキー文字列パーサーを実装 (Ctrl, Shift, Alt, Super/Win + A-Z, 0-9, F1-F12)
+    - Settings画面にホットキー入力フィールドを追加
+    - ホットキー変更時に動的に再登録（旧ホットキー解除→新ホットキー登録）
+    - 無効なホットキー形式の場合はエラーメッセージを表示
+- [ ] 他アプリケーションのテキスト入力フィールドにフォーカスがある場合は読んだテキストを自動入力する
+- [ ] メイン画面に２つチェックボックスを追加
+    - [ ] クリップボードに自動コピーする (default: ON)
+    - [ ] 他アプリに自動入力する (default: ON)
 - [ ] Bugfix: 一部マイクが使えない
     - Case 1:
     ```
@@ -29,8 +45,6 @@
     Sample rate: 44100Hz, Channels: 2 (using default), Format: F32
     Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x8889000A
     ```
-- [ ] ショートカットキー対応（例: Ctrl+Shift+Rで録音開始/停止）
-    - 他のアプリケーションがフォーカスされている場合でも動作
 
 ## v0.1.0 (Released 2025-12-18)
 

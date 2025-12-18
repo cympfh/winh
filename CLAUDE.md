@@ -10,6 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Single executable file (~30MB, no installer required)
 - Cross-platform compilation (can be built on WSL/Linux, runs on Windows 11)
 - Voice input using Windows default audio input (forced to mono)
+- Input device selection (choose from available audio input devices)
+- Global hotkey support (default: Ctrl+Shift+H, customizable)
+  - Works even when application is not focused
+  - Starts recording when pressed (does not toggle)
 - Automatic silence detection with configurable duration (default 2 seconds)
 - Grace period (3 seconds) after recording starts before silence detection
 - Leading silence trimming (keeps 0.2 seconds)
@@ -17,11 +21,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Silence progress indicator (cyan fill on Stop button)
   - Real-time volume level indicator (gray/green/red bar)
 - Audio saved temporarily as WAV and sent to OpenAI for transcription
-- Settings modal for configuration:
+- Settings modal with scrollable content:
   - API key management
   - Model selection (default: gpt-4o-transcribe)
   - Silence duration (0.5-10.0 seconds)
   - Silence threshold (0.001-0.3, logarithmic scale)
+  - Input device selection
+  - Hotkey customization (Ctrl/Shift/Alt/Super + A-Z/0-9/F1-F12)
+- Transcribed text area (read-only, click to copy to clipboard)
 - Local settings persistence (JSON format in user config directory)
 - Japanese font support (Noto Sans JP)
 - Background transcription (non-blocking UI)
@@ -75,7 +82,7 @@ cargo test --all-features
 
 ## Project Status
 
-Phase 7 is complete. The application is fully functional with all core features implemented. See TODO.md for detailed development history.
+v0.1.0 released (2025-12-18). v0.2.0 is in progress with additional features. See TODO.md for detailed development history.
 
 ### Completed Phases
 - ✅ Phase 1: GUI framework (egui/eframe)
@@ -86,6 +93,12 @@ Phase 7 is complete. The application is fully functional with all core features 
 - ✅ Phase 6: Settings management and local storage
 - ✅ Phase 6.5: Audio processing improvements
 - ✅ Phase 7: Refactoring, CI/CD, visual feedback, license
+
+### v0.2.0 Features (Completed)
+- ✅ Transcribed text area with click-to-copy
+- ✅ Input device selection
+- ✅ Global hotkey support (Ctrl+Shift+H)
+- ✅ Customizable hotkey configuration
 
 ## Architecture
 
@@ -142,14 +155,29 @@ fonts/
    - Config file location: OS-specific config directory
    - Command-line argument support
    - Default values for all settings
+   - Hotkey parsing (string format to HotKey object)
 
-7. **GUI State Management** (main.rs)
+7. **Global Hotkey Management** (main.rs)
+   - Uses `global-hotkey` crate for system-wide hotkey registration
+   - Dynamic hotkey registration/unregistration
+   - Works even when application is not focused
+   - Periodic UI updates (100ms) to detect hotkey events
+   - Only triggers when not recording and not transcribing
+
+8. **Input Device Selection** (audio.rs, main.rs)
+   - Enumerates available input devices via `cpal`
+   - Device selection stored in configuration
+   - ComboBox UI for device selection
+   - Falls back to default device if specified device unavailable
+
+9. **GUI State Management** (main.rs)
    - Single-window application with egui
    - Custom button rendering with progress indicators
    - Real-time visual feedback (silence progress, volume meter)
-   - Modal settings dialog
+   - Modal settings dialog with scrollable content
    - Background transcription using channels
    - Japanese font support
+   - Read-only transcribed text area with click-to-copy
 
 ### Key Implementation Details
 
@@ -182,6 +210,42 @@ enum TranscriptionMessage {
 }
 ```
 
+#### Global Hotkey Implementation
+The application registers a global hotkey that works system-wide:
+```rust
+// Parse hotkey from config string (e.g., "Ctrl+Shift+H")
+let current_hotkey = config.parse_hotkey().unwrap_or_else(|e| {
+    HotKey::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH)
+});
+
+// Register with global hotkey manager
+hotkey_manager.register(current_hotkey);
+
+// In update loop, check for hotkey events
+if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+    if event.id == self.current_hotkey.id() {
+        // Start recording
+    }
+}
+
+// Request periodic repaints to ensure hotkey events are detected
+ctx.request_repaint_after(std::time::Duration::from_millis(100));
+```
+
+Hotkeys can be dynamically changed by unregistering the old hotkey and registering a new one.
+
+#### Settings Dialog with Scrolling
+The settings dialog uses a `ScrollArea` to handle overflow:
+```rust
+egui::ScrollArea::vertical()
+    .max_height(400.0)
+    .show(ui, |ui| {
+        // Settings content
+    });
+
+// Save/Cancel buttons outside ScrollArea for always-visible controls
+```
+
 ### Configuration Storage
 Settings are stored in OS-specific locations:
 - Windows: `%APPDATA%\winh\config.json`
@@ -194,6 +258,7 @@ Settings are stored in OS-specific locations:
 - **HTTP**: reqwest 0.12 (blocking, multipart)
 - **Serialization**: serde 1.0, serde_json 1.0
 - **System**: dirs 5.0, arboard 3.3, tempfile 3.8, image 0.24
+- **Hotkey**: global-hotkey 0.6
 - **Build**: winres 0.1 (Windows icon)
 
 ### License

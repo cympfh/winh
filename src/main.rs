@@ -5,6 +5,10 @@ mod openai;
 use audio::{save_audio_to_wav, AudioRecorder};
 use config::Config;
 use eframe::egui;
+use global_hotkey::{
+    hotkey::{Code, HotKey, Modifiers},
+    GlobalHotKeyEvent, GlobalHotKeyManager,
+};
 use openai::OpenAIClient;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
@@ -88,6 +92,7 @@ struct WinhApp {
     settings_silence_duration: f32,
     settings_silence_threshold: f32,
     settings_input_device: Option<String>,
+    settings_hotkey: String,
 
     // Device management
     available_devices: Vec<String>,
@@ -95,6 +100,10 @@ struct WinhApp {
 
     // Error tracking
     last_error: Option<String>,
+
+    // Global hotkey management
+    hotkey_manager: GlobalHotKeyManager,
+    current_hotkey: HotKey,
 }
 
 impl WinhApp {
@@ -118,6 +127,22 @@ impl WinhApp {
             0
         };
 
+        // Initialize global hotkey manager
+        let hotkey_manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
+
+        // Register hotkey from config
+        let current_hotkey = config.parse_hotkey().unwrap_or_else(|e| {
+            eprintln!("Failed to parse hotkey '{}': {}", config.hotkey, e);
+            eprintln!("Falling back to default: Ctrl+Shift+H");
+            HotKey::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyH)
+        });
+
+        if let Err(e) = hotkey_manager.register(current_hotkey) {
+            eprintln!("Failed to register global hotkey: {}", e);
+        } else {
+            println!("Global hotkey registered: {}", config.hotkey);
+        }
+
         Self {
             is_recording: false,
             transcribed_text: String::new(),
@@ -130,6 +155,7 @@ impl WinhApp {
             settings_silence_duration: config.silence_duration_secs,
             settings_silence_threshold: config.silence_threshold,
             settings_input_device: config.input_device_name.clone(),
+            settings_hotkey: config.hotkey.clone(),
             available_devices,
             selected_device_index,
             config,
@@ -137,12 +163,25 @@ impl WinhApp {
             is_transcribing: false,
             show_settings: false,
             last_error: None,
+            hotkey_manager,
+            current_hotkey,
         }
     }
 }
 
 impl eframe::App for WinhApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for global hotkey events
+        if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            if event.id == self.current_hotkey.id() {
+                println!("Global hotkey triggered: {}", self.config.hotkey);
+                if !self.is_recording && !self.is_transcribing {
+                    self.is_recording = true;
+                    self.on_start_recording();
+                }
+            }
+        }
+
         // Check for transcription results
         if let Some(receiver) = &self.transcription_receiver {
             if let Ok(message) = receiver.try_recv() {
@@ -203,47 +242,62 @@ impl eframe::App for WinhApp {
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.label("OpenAI API Key:");
-                    ui.text_edit_singleline(&mut self.settings_api_key);
-                    ui.add_space(10.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            ui.label("OpenAI API Key:");
+                            ui.text_edit_singleline(&mut self.settings_api_key);
+                            ui.add_space(10.0);
 
-                    ui.label("Model:");
-                    ui.text_edit_singleline(&mut self.settings_model);
-                    ui.add_space(10.0);
+                            ui.label("Model:");
+                            ui.text_edit_singleline(&mut self.settings_model);
+                            ui.add_space(10.0);
 
-                    ui.label("Silence Duration (seconds):");
-                    ui.add(egui::Slider::new(
-                        &mut self.settings_silence_duration,
-                        0.5..=10.0,
-                    ));
-                    ui.add_space(10.0);
+                            ui.label("Silence Duration (seconds):");
+                            ui.add(egui::Slider::new(
+                                &mut self.settings_silence_duration,
+                                0.5..=10.0,
+                            ));
+                            ui.add_space(10.0);
 
-                    ui.label("Silence Threshold (0.001-0.3):");
-                    ui.add(
-                        egui::Slider::new(&mut self.settings_silence_threshold, 0.001..=0.3)
-                            .logarithmic(true),
-                    );
-                    ui.label(format!("Current: {:.4}", self.settings_silence_threshold));
-                    ui.add_space(10.0);
+                            ui.label("Silence Threshold (0.001-0.3):");
+                            ui.add(
+                                egui::Slider::new(
+                                    &mut self.settings_silence_threshold,
+                                    0.001..=0.3,
+                                )
+                                .logarithmic(true),
+                            );
+                            ui.label(format!("Current: {:.4}", self.settings_silence_threshold));
+                            ui.add_space(10.0);
 
-                    ui.label("Input Device:");
-                    egui::ComboBox::from_id_salt("input_device_combo")
-                        .selected_text(
-                            self.available_devices
-                                .get(self.selected_device_index)
-                                .unwrap_or(&"Default".to_string()),
-                        )
-                        .show_ui(ui, |ui| {
-                            for (idx, device_name) in self.available_devices.iter().enumerate() {
-                                ui.selectable_value(
-                                    &mut self.selected_device_index,
-                                    idx,
-                                    device_name,
-                                );
-                            }
+                            ui.label("Input Device:");
+                            egui::ComboBox::from_id_salt("input_device_combo")
+                                .selected_text(
+                                    self.available_devices
+                                        .get(self.selected_device_index)
+                                        .unwrap_or(&"Default".to_string()),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for (idx, device_name) in
+                                        self.available_devices.iter().enumerate()
+                                    {
+                                        ui.selectable_value(
+                                            &mut self.selected_device_index,
+                                            idx,
+                                            device_name,
+                                        );
+                                    }
+                                });
+                            ui.add_space(10.0);
+
+                            ui.label("Hotkey (e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
+                            ui.text_edit_singleline(&mut self.settings_hotkey);
+                            ui.label("Supported modifiers: Ctrl, Shift, Alt, Super/Win");
+                            ui.label("Supported keys: A-Z, 0-9, F1-F12");
                         });
-                    ui.add_space(10.0);
 
+                    ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
                             self.config.api_key = self.settings_api_key.trim().to_string();
@@ -255,9 +309,50 @@ impl eframe::App for WinhApp {
                                 .get(self.selected_device_index)
                                 .cloned();
 
+                            // Handle hotkey change
+                            let new_hotkey_str = self.settings_hotkey.trim().to_string();
+                            if new_hotkey_str != self.config.hotkey {
+                                self.config.hotkey = new_hotkey_str;
+
+                                // Try to parse and register new hotkey
+                                match self.config.parse_hotkey() {
+                                    Ok(new_hotkey) => {
+                                        // Unregister old hotkey
+                                        if let Err(e) =
+                                            self.hotkey_manager.unregister(self.current_hotkey)
+                                        {
+                                            eprintln!("Failed to unregister old hotkey: {}", e);
+                                        }
+
+                                        // Register new hotkey
+                                        match self.hotkey_manager.register(new_hotkey) {
+                                            Ok(_) => {
+                                                self.current_hotkey = new_hotkey;
+                                                println!(
+                                                    "Hotkey changed to: {}",
+                                                    self.config.hotkey
+                                                );
+                                            }
+                                            Err(e) => {
+                                                self.status_message =
+                                                    format!("Failed to register new hotkey: {}", e);
+                                                eprintln!("Failed to register new hotkey: {}", e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message =
+                                            format!("Invalid hotkey format: {}", e);
+                                        eprintln!("Failed to parse hotkey: {}", e);
+                                    }
+                                }
+                            }
+
                             match self.config.save() {
                                 Ok(_) => {
-                                    self.status_message = "Settings saved!".to_string();
+                                    if self.status_message.is_empty() {
+                                        self.status_message = "Settings saved!".to_string();
+                                    }
                                 }
                                 Err(e) => {
                                     self.status_message = format!("Failed to save settings: {}", e);
@@ -274,6 +369,7 @@ impl eframe::App for WinhApp {
                             self.settings_silence_duration = self.config.silence_duration_secs;
                             self.settings_silence_threshold = self.config.silence_threshold;
                             self.settings_input_device = self.config.input_device_name.clone();
+                            self.settings_hotkey = self.config.hotkey.clone();
                             // Restore device index
                             self.selected_device_index =
                                 if let Some(ref device_name) = self.config.input_device_name {
@@ -533,6 +629,10 @@ impl eframe::App for WinhApp {
         if self.is_transcribing {
             ctx.request_repaint();
         }
+
+        // Always check for hotkey events by requesting periodic repaints
+        // This ensures we can detect hotkeys even when the window is not focused
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
 }
 
