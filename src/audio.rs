@@ -62,12 +62,20 @@ impl AudioRecorder {
         println!("Using input device: {}", device.name().unwrap_or_default());
 
         // Get the default input config
-        let config = device
+        let default_config = device
             .default_input_config()
             .map_err(|e| format!("Failed to get default input config: {}", e))?;
 
-        self.sample_rate = config.sample_rate().0;
-        println!("Sample rate: {}", self.sample_rate);
+        // Force mono (1 channel) recording
+        let config = cpal::StreamConfig {
+            channels: 1,
+            sample_rate: default_config.sample_rate(),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        self.sample_rate = config.sample_rate.0;
+        println!("Sample rate: {}Hz, Channels: {}, Format: {:?}",
+                 self.sample_rate, config.channels, default_config.sample_format());
 
         // Clear previous buffer and reset silence timer
         {
@@ -87,24 +95,24 @@ impl AudioRecorder {
         let last_sound_clone = Arc::clone(&self.last_sound_time);
         let threshold = self.silence_threshold;
 
-        let stream = match config.sample_format() {
+        let stream = match default_config.sample_format() {
             cpal::SampleFormat::F32 => self.build_input_stream::<f32>(
                 &device,
-                &config.into(),
+                &config,
                 buffer_clone,
                 last_sound_clone,
                 threshold,
             ),
             cpal::SampleFormat::I16 => self.build_input_stream::<i16>(
                 &device,
-                &config.into(),
+                &config,
                 buffer_clone,
                 last_sound_clone,
                 threshold,
             ),
             cpal::SampleFormat::U16 => self.build_input_stream::<u16>(
                 &device,
-                &config.into(),
+                &config,
                 buffer_clone,
                 last_sound_clone,
                 threshold,
@@ -217,6 +225,11 @@ pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf
         bits_per_sample: 16,
         sample_format: hound::SampleFormat::Int,
     };
+
+    println!(
+        "Creating WAV file with: channels={}, sample_rate={}, bits_per_sample={}, samples={}",
+        spec.channels, spec.sample_rate, spec.bits_per_sample, trimmed_data.len()
+    );
 
     let mut writer = hound::WavWriter::create(&temp_path, spec)
         .map_err(|e| format!("Failed to create WAV writer: {}", e))?;
