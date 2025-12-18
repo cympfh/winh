@@ -87,6 +87,11 @@ struct WinhApp {
     settings_model: String,
     settings_silence_duration: f32,
     settings_silence_threshold: f32,
+    settings_input_device: Option<String>,
+
+    // Device management
+    available_devices: Vec<String>,
+    selected_device_index: usize,
 
     // Error tracking
     last_error: Option<String>,
@@ -94,6 +99,25 @@ struct WinhApp {
 
 impl WinhApp {
     fn new(config: Config) -> Self {
+        // Get available input devices
+        let mut available_devices = audio::get_input_devices().unwrap_or_else(|e| {
+            eprintln!("Failed to get input devices: {}", e);
+            vec![]
+        });
+
+        // Add "Windows既定" as first option
+        available_devices.insert(0, "Windows既定".to_string());
+
+        // Find the index of the configured device
+        let selected_device_index = if let Some(ref device_name) = config.input_device_name {
+            available_devices
+                .iter()
+                .position(|d| d == device_name)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
         Self {
             is_recording: false,
             transcribed_text: String::new(),
@@ -105,6 +129,9 @@ impl WinhApp {
             settings_model: config.model.clone(),
             settings_silence_duration: config.silence_duration_secs,
             settings_silence_threshold: config.silence_threshold,
+            settings_input_device: config.input_device_name.clone(),
+            available_devices,
+            selected_device_index,
             config,
             transcription_receiver: None,
             is_transcribing: false,
@@ -199,12 +226,34 @@ impl eframe::App for WinhApp {
                     ui.label(format!("Current: {:.4}", self.settings_silence_threshold));
                     ui.add_space(10.0);
 
+                    ui.label("Input Device:");
+                    egui::ComboBox::from_id_salt("input_device_combo")
+                        .selected_text(
+                            self.available_devices
+                                .get(self.selected_device_index)
+                                .unwrap_or(&"Default".to_string()),
+                        )
+                        .show_ui(ui, |ui| {
+                            for (idx, device_name) in self.available_devices.iter().enumerate() {
+                                ui.selectable_value(
+                                    &mut self.selected_device_index,
+                                    idx,
+                                    device_name,
+                                );
+                            }
+                        });
+                    ui.add_space(10.0);
+
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
                             self.config.api_key = self.settings_api_key.trim().to_string();
                             self.config.model = self.settings_model.trim().to_string();
                             self.config.silence_duration_secs = self.settings_silence_duration;
                             self.config.silence_threshold = self.settings_silence_threshold;
+                            self.config.input_device_name = self
+                                .available_devices
+                                .get(self.selected_device_index)
+                                .cloned();
 
                             match self.config.save() {
                                 Ok(_) => {
@@ -224,6 +273,17 @@ impl eframe::App for WinhApp {
                             self.settings_model = self.config.model.clone();
                             self.settings_silence_duration = self.config.silence_duration_secs;
                             self.settings_silence_threshold = self.config.silence_threshold;
+                            self.settings_input_device = self.config.input_device_name.clone();
+                            // Restore device index
+                            self.selected_device_index =
+                                if let Some(ref device_name) = self.config.input_device_name {
+                                    self.available_devices
+                                        .iter()
+                                        .position(|d| d == device_name)
+                                        .unwrap_or(0)
+                                } else {
+                                    0
+                                };
                             self.show_settings = false;
                         }
                     });
@@ -457,7 +517,7 @@ impl eframe::App for WinhApp {
                 );
 
                 // Auto-stop if silence duration exceeded
-                if recorder.is_silent(self.config.silence_duration_secs) && buffer_size > 0 {
+                if recorder.is_silent(self.config.silence_duration_secs) {
                     println!(
                         "Silence detected for {:.1}s - auto-stopping",
                         self.config.silence_duration_secs
@@ -483,17 +543,27 @@ impl WinhApp {
         self.recording_info.clear();
 
         match AudioRecorder::new(self.config.silence_threshold) {
-            Ok(mut recorder) => match recorder.start_recording() {
-                Ok(_) => {
-                    self.status_message = "Recording... Speak now!".to_string();
-                    self.audio_recorder = Some(recorder);
+            Ok(mut recorder) => {
+                // Use configured device if set, otherwise use default
+                // If "Windows既定" is selected, use None to get default device
+                let device_name = self
+                    .config
+                    .input_device_name
+                    .as_ref()
+                    .filter(|name| name.as_str() != "Windows既定")
+                    .map(|s| s.as_str());
+                match recorder.start_recording_with_device(device_name) {
+                    Ok(_) => {
+                        self.status_message = "Recording... Speak now!".to_string();
+                        self.audio_recorder = Some(recorder);
+                    }
+                    Err(e) => {
+                        self.status_message = format!("Error: {}", e);
+                        self.is_recording = false;
+                        eprintln!("Failed to start recording: {}", e);
+                    }
                 }
-                Err(e) => {
-                    self.status_message = format!("Error: {}", e);
-                    self.is_recording = false;
-                    eprintln!("Failed to start recording: {}", e);
-                }
-            },
+            }
             Err(e) => {
                 self.status_message = format!("Error: {}", e);
                 self.is_recording = false;
@@ -509,6 +579,7 @@ impl WinhApp {
         if let Some(mut recorder) = self.audio_recorder.take() {
             let audio_data = recorder.stop_recording();
             let sample_rate = recorder.get_sample_rate();
+            let silence_threshold = recorder.get_silence_threshold();
 
             println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
             println!(
@@ -523,7 +594,7 @@ impl WinhApp {
             }
 
             // Save audio to WAV file
-            match save_audio_to_wav(&audio_data, sample_rate) {
+            match save_audio_to_wav(&audio_data, sample_rate, silence_threshold) {
                 Ok(path) => {
                     let _duration = audio_data.len() as f32 / sample_rate as f32;
                     self.audio_file_path = Some(path.clone());

@@ -8,6 +8,8 @@ pub struct Config {
     pub model: String,
     pub silence_duration_secs: f32,
     pub silence_threshold: f32,
+    #[serde(default)]
+    pub input_device_name: Option<String>,
 }
 
 impl Default for Config {
@@ -17,6 +19,7 @@ impl Default for Config {
             model: "gpt-4o-transcribe".to_string(),
             silence_duration_secs: 2.0,
             silence_threshold: 0.01,
+            input_device_name: None,
         }
     }
 }

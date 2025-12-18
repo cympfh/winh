@@ -69,14 +69,22 @@ impl AudioRecorder {
         *last_sound = Instant::now();
     }
 
-    pub fn start_recording(&mut self) -> Result<(), String> {
+    pub fn start_recording_with_device(&mut self, device_name: Option<&str>) -> Result<(), String> {
         // Get the default host
         let host = cpal::default_host();
 
-        // Get the default input device
-        let device = host
-            .default_input_device()
-            .ok_or("No input device available")?;
+        // Get the input device
+        let device = if let Some(name) = device_name {
+            // Find device by name
+            host.input_devices()
+                .map_err(|e| format!("Failed to get input devices: {}", e))?
+                .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                .ok_or(format!("Input device '{}' not found", name))?
+        } else {
+            // Use default device
+            host.default_input_device()
+                .ok_or("No input device available")?
+        };
 
         println!("Using input device: {}", device.name().unwrap_or_default());
 
@@ -163,7 +171,6 @@ impl AudioRecorder {
                     "Mono config not supported ({}), falling back to default config",
                     e
                 );
-
                 let default_stream_config = default_config.config();
                 self.sample_rate = default_stream_config.sample_rate.0;
                 let channels = default_stream_config.channels;
@@ -234,6 +241,10 @@ impl AudioRecorder {
 
     pub fn get_sample_rate(&self) -> u32 {
         self.sample_rate
+    }
+
+    pub fn get_silence_threshold(&self) -> f32 {
+        self.silence_threshold
     }
 
     fn build_input_stream<T>(
@@ -400,9 +411,12 @@ impl Default for AudioRecorder {
     }
 }
 
-pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf, String> {
+pub fn save_audio_to_wav(
+    audio_data: &[f32],
+    sample_rate: u32,
+    silence_threshold: f32,
+) -> Result<PathBuf, String> {
     // Trim leading silence but keep 0.2 seconds
-    let silence_threshold = 0.01;
     let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
 
     let trimmed_data = trim_leading_silence(audio_data, silence_threshold, keep_samples);
@@ -474,4 +488,21 @@ fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize)
     let start_idx = first_sound_idx.saturating_sub(keep_samples);
 
     &audio_data[start_idx..]
+}
+
+/// Get list of available input devices
+pub fn get_input_devices() -> Result<Vec<String>, String> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("Failed to get input devices: {}", e))?;
+
+    let mut device_names = Vec::new();
+    for device in devices {
+        if let Ok(name) = device.name() {
+            device_names.push(name);
+        }
+    }
+
+    Ok(device_names)
 }

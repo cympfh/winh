@@ -6,10 +6,31 @@
     - `TextEdit::multiline().interactive(false)` で編集不可に設定
     - テキストエリアをクリックするとクリップボードにコピー
     - ラベルに "(click to copy)" を表示
+- [x] 入力デバイス選択機能 (2025-12-18)
+    - Config に `input_device_name` フィールドを追加
+    - `audio::get_input_devices()` でデバイス一覧を取得
+    - Settings画面に ComboBox でデバイス選択UIを追加
+    - 「Windows既定」を先頭に追加（デフォルトデバイスを使用）
+    - `AudioRecorder::start_recording_with_device()` で指定デバイスを使用
+- [ ] Bugfix: 一部マイクが使えない
+    - Case 1:
+    ```
+    Recording started
+    Using input device: マイク (UGREEN Camera Audio)
+    Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
+    Sample rate: 48000Hz, Channels: 2 (using default), Format: F32
+    Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x88890008
+    ```
+    - Case 2:
+    ```
+    Recording started
+    Using input device: CABLE-A Output (VB-Audio Cable A)
+    Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
+    Sample rate: 44100Hz, Channels: 2 (using default), Format: F32
+    Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x8889000A
+    ```
 - [ ] ショートカットキー対応（例: Ctrl+Shift+Rで録音開始/停止）
     - 他のアプリケーションがフォーカスされている場合でも動作
-- [ ] 入力デバイス選択機能
-    - 複数のマイクが接続されている場合に選択可能にする
 
 ## v0.1.0 (Released 2025-12-18)
 
