@@ -13,10 +13,22 @@ pub struct Config {
     pub input_device_name: Option<String>,
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
+    #[serde(default = "default_clipboard_enabled")]
+    pub clipboard_enabled: bool,
+    #[serde(default = "default_auto_input_enabled")]
+    pub auto_input_enabled: bool,
 }
 
 fn default_hotkey() -> String {
     "Ctrl+Shift+H".to_string()
+}
+
+fn default_clipboard_enabled() -> bool {
+    true
+}
+
+fn default_auto_input_enabled() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -28,6 +40,8 @@ impl Default for Config {
             silence_threshold: 0.01,
             input_device_name: None,
             hotkey: default_hotkey(),
+            clipboard_enabled: default_clipboard_enabled(),
+            auto_input_enabled: default_auto_input_enabled(),
         }
     }
 }
