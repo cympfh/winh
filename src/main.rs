@@ -388,15 +388,38 @@ impl eframe::App for WinhApp {
 
                 ui.add_space(20.0);
 
-                // Transcribed text display area
-                ui.label("Transcribed Text:");
+                // Transcribed text display area (click to copy)
+                ui.label("Transcribed Text (click to copy):");
                 ui.add_space(5.0);
 
-                egui::ScrollArea::vertical()
+                let text_response = egui::ScrollArea::vertical()
                     .max_height(100.0)
                     .show(ui, |ui| {
-                        ui.text_edit_multiline(&mut self.transcribed_text);
+                        let output = ui.add(
+                            egui::TextEdit::multiline(&mut self.transcribed_text)
+                                .interactive(false),
+                        );
+                        // Add click sense on top of the text area
+                        let rect = output.rect;
+                        ui.allocate_rect(rect, egui::Sense::click())
                     });
+
+                // Copy to clipboard when clicked
+                if text_response.inner.clicked() && !self.transcribed_text.is_empty() {
+                    match arboard::Clipboard::new() {
+                        Ok(mut clipboard) => match clipboard.set_text(&self.transcribed_text) {
+                            Ok(_) => {
+                                self.status_message = "Text copied to clipboard!".to_string();
+                            }
+                            Err(e) => {
+                                self.status_message = format!("Failed to copy: {}", e);
+                            }
+                        },
+                        Err(e) => {
+                            self.status_message = format!("Failed to access clipboard: {}", e);
+                        }
+                    }
+                }
 
                 ui.add_space(10.0);
 

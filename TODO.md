@@ -1,7 +1,11 @@
 # winh - TODO
 
-## v0.2.0 (Planned)
+## v0.2.0 (In Progress)
 
+- [x] Transcribed Text エリアはユーザーには編集不可にする (2025-12-18)
+    - `TextEdit::multiline().interactive(false)` で編集不可に設定
+    - テキストエリアをクリックするとクリップボードにコピー
+    - ラベルに "(click to copy)" を表示
 - [ ] ショートカットキー対応（例: Ctrl+Shift+Rで録音開始/停止）
     - 他のアプリケーションがフォーカスされている場合でも動作
 - [ ] 入力デバイス選択機能
@@ -63,7 +67,7 @@
 ### Phase 7: 仕上げ ✅ 完了
 - [x] エラー表示UI（API key未設定、ネットワークエラー等）
 - [x] リリースビルドの動作確認
-- [ ] Windows11での実機テスト
+- [x] Windows11での実機テスト
 - [x] ドキュメント整備（README更新、使用方法記載）
 - [x] .github/workflows
     - Rust のCI設定
