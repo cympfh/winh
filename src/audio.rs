@@ -160,10 +160,6 @@ impl AudioRecorder {
             Err(e) => {
                 // Mono config failed, fall back to default config
                 println!(
-                    
-
-                    e
-               
                     "Mono config not supported ({}), falling back to default config",
                     e
                 );
