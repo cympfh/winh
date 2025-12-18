@@ -225,7 +225,7 @@ impl AudioRecorder {
                     static mut BUFFER_COUNT: u32 = 0;
                     unsafe {
                         BUFFER_COUNT += 1;
-                        if BUFFER_COUNT % 50 == 0 {
+                        if BUFFER_COUNT.is_multiple_of(50) {
                             println!(
                                 "Max amplitude: {:.6}, Has sound: {}, Threshold: {}",
                                 max_amplitude, has_sound, threshold

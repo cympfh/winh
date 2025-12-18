@@ -2,6 +2,10 @@
 name = "winh"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["cympfh"]
+description = "Windows 11 voice transcription GUI application"
+repository = "https://github.com/cympfh/winh"
 
 [dependencies]
 eframe = "0.29"

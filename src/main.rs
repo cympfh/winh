@@ -285,11 +285,8 @@ impl eframe::App for WinhApp {
                 let visuals = ui.style().interact(&response);
 
                 // Draw button background
-                ui.painter().rect_filled(
-                    rect,
-                    visuals.rounding,
-                    visuals.bg_fill,
-                );
+                ui.painter()
+                    .rect_filled(rect, visuals.rounding, visuals.bg_fill);
 
                 // Draw progress bar if recording (fill from bottom)
                 if self.is_recording && silence_progress > 0.0 {
@@ -306,11 +303,8 @@ impl eframe::App for WinhApp {
                 }
 
                 // Draw button border
-                ui.painter().rect_stroke(
-                    rect,
-                    visuals.rounding,
-                    visuals.bg_stroke,
-                );
+                ui.painter()
+                    .rect_stroke(rect, visuals.rounding, visuals.bg_stroke);
 
                 // Draw button text
                 let text_color = visuals.text_color();
