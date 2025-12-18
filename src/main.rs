@@ -579,6 +579,7 @@ impl WinhApp {
         if let Some(mut recorder) = self.audio_recorder.take() {
             let audio_data = recorder.stop_recording();
             let sample_rate = recorder.get_sample_rate();
+            let silence_threshold = recorder.get_silence_threshold();
 
             println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
             println!(
@@ -593,7 +594,7 @@ impl WinhApp {
             }
 
             // Save audio to WAV file
-            match save_audio_to_wav(&audio_data, sample_rate) {
+            match save_audio_to_wav(&audio_data, sample_rate, silence_threshold) {
                 Ok(path) => {
                     let _duration = audio_data.len() as f32 / sample_rate as f32;
                     self.audio_file_path = Some(path.clone());

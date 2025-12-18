@@ -244,6 +244,10 @@ impl AudioRecorder {
         self.sample_rate
     }
 
+    pub fn get_silence_threshold(&self) -> f32 {
+        self.silence_threshold
+    }
+
     fn build_input_stream<T>(
         &self,
         device: &cpal::Device,
@@ -408,9 +412,8 @@ impl Default for AudioRecorder {
     }
 }
 
-pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf, String> {
+pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32, silence_threshold: f32) -> Result<PathBuf, String> {
     // Trim leading silence but keep 0.2 seconds
-    let silence_threshold = 0.01;
     let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
 
     let trimmed_data = trim_leading_silence(audio_data, silence_threshold, keep_samples);
