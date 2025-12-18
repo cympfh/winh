@@ -85,20 +85,12 @@ impl AudioRecorder {
             .default_input_config()
             .map_err(|e| format!("Failed to get default input config: {}", e))?;
 
-        // Force mono (1 channel) recording
-        let config = cpal::StreamConfig {
+        // Try to force mono (1 channel) recording first
+        let mono_config = cpal::StreamConfig {
             channels: 1,
             sample_rate: default_config.sample_rate(),
             buffer_size: cpal::BufferSize::Default,
         };
-
-        self.sample_rate = config.sample_rate.0;
-        println!(
-            "Sample rate: {}Hz, Channels: {}, Format: {:?}",
-            self.sample_rate,
-            config.channels,
-            default_config.sample_format()
-        );
 
         // Clear previous buffer and reset silence timer
         {
@@ -125,33 +117,95 @@ impl AudioRecorder {
         let max_amplitude_clone = Arc::clone(&self.current_max_amplitude);
         let threshold = self.silence_threshold;
 
-        let stream = match default_config.sample_format() {
+        // First try with mono config
+        let stream_result = match default_config.sample_format() {
             cpal::SampleFormat::F32 => self.build_input_stream::<f32>(
                 &device,
-                &config,
-                buffer_clone,
-                last_sound_clone,
-                max_amplitude_clone,
+                &mono_config,
+                buffer_clone.clone(),
+                last_sound_clone.clone(),
+                max_amplitude_clone.clone(),
                 threshold,
             ),
             cpal::SampleFormat::I16 => self.build_input_stream::<i16>(
                 &device,
-                &config,
-                buffer_clone,
-                last_sound_clone,
-                max_amplitude_clone,
+                &mono_config,
+                buffer_clone.clone(),
+                last_sound_clone.clone(),
+                max_amplitude_clone.clone(),
                 threshold,
             ),
             cpal::SampleFormat::U16 => self.build_input_stream::<u16>(
                 &device,
-                &config,
-                buffer_clone,
-                last_sound_clone,
-                max_amplitude_clone,
+                &mono_config,
+                buffer_clone.clone(),
+                last_sound_clone.clone(),
+                max_amplitude_clone.clone(),
                 threshold,
             ),
             _ => return Err("Unsupported sample format".to_string()),
-        }?;
+        };
+
+        let (stream, _actual_channels) = match stream_result {
+            Ok(stream) => {
+                self.sample_rate = mono_config.sample_rate.0;
+                println!(
+                    "Sample rate: {}Hz, Channels: {} (forced mono), Format: {:?}",
+                    self.sample_rate,
+                    mono_config.channels,
+                    default_config.sample_format()
+                );
+                (stream, 1)
+            }
+            Err(e) => {
+                // Mono config failed, fall back to default config
+                println!("Mono config not supported ({}), falling back to default config", e);
+
+                let default_stream_config = default_config.config();
+                self.sample_rate = default_stream_config.sample_rate.0;
+                let channels = default_stream_config.channels;
+
+                println!(
+                    "Sample rate: {}Hz, Channels: {} (using default), Format: {:?}",
+                    self.sample_rate,
+                    channels,
+                    default_config.sample_format()
+                );
+
+                let stream = match default_config.sample_format() {
+                    cpal::SampleFormat::F32 => self.build_input_stream_with_channels::<f32>(
+                        &device,
+                        &default_stream_config,
+                        buffer_clone,
+                        last_sound_clone,
+                        max_amplitude_clone,
+                        threshold,
+                        channels,
+                    ),
+                    cpal::SampleFormat::I16 => self.build_input_stream_with_channels::<i16>(
+                        &device,
+                        &default_stream_config,
+                        buffer_clone,
+                        last_sound_clone,
+                        max_amplitude_clone,
+                        threshold,
+                        channels,
+                    ),
+                    cpal::SampleFormat::U16 => self.build_input_stream_with_channels::<u16>(
+                        &device,
+                        &default_stream_config,
+                        buffer_clone,
+                        last_sound_clone,
+                        max_amplitude_clone,
+                        threshold,
+                        channels,
+                    ),
+                    _ => return Err("Unsupported sample format".to_string()),
+                }?;
+
+                (stream, channels)
+            }
+        };
 
         stream
             .play()
@@ -229,6 +283,95 @@ impl AudioRecorder {
                             println!(
                                 "Max amplitude: {:.6}, Has sound: {}, Threshold: {}",
                                 max_amplitude, has_sound, threshold
+                            );
+                        }
+                    }
+
+                    // Update last sound time if sound was detected
+                    if has_sound {
+                        let mut last_sound = last_sound_time.lock().unwrap();
+                        *last_sound = Instant::now();
+                    }
+                },
+                err_fn,
+                None,
+            )
+            .map_err(|e| format!("Failed to build input stream: {}", e))?;
+
+        Ok(stream)
+    }
+
+    fn build_input_stream_with_channels<T>(
+        &self,
+        device: &cpal::Device,
+        config: &cpal::StreamConfig,
+        buffer: Arc<Mutex<Vec<f32>>>,
+        last_sound_time: Arc<Mutex<Instant>>,
+        current_max_amplitude: Arc<Mutex<f32>>,
+        threshold: f32,
+        channels: u16,
+    ) -> Result<cpal::Stream, String>
+    where
+        T: cpal::Sample + cpal::SizedSample,
+        f32: cpal::FromSample<T>,
+    {
+        let err_fn = |err| eprintln!("An error occurred on the audio stream: {}", err);
+
+        let stream = device
+            .build_input_stream(
+                config,
+                move |data: &[T], _: &cpal::InputCallbackInfo| {
+                    let mut buffer = buffer.lock().unwrap();
+                    let mut has_sound = false;
+                    let mut max_amplitude = 0.0f32;
+
+                    if channels == 1 {
+                        // Mono: process all samples directly
+                        for &sample in data.iter() {
+                            let sample_f32: f32 = cpal::Sample::from_sample(sample);
+                            buffer.push(sample_f32);
+
+                            let abs_sample = sample_f32.abs();
+                            max_amplitude = max_amplitude.max(abs_sample);
+
+                            if abs_sample > threshold {
+                                has_sound = true;
+                            }
+                        }
+                    } else {
+                        // Multi-channel: convert to mono by averaging channels
+                        for chunk in data.chunks_exact(channels as usize) {
+                            let mut sum = 0.0f32;
+                            for &sample in chunk {
+                                let sample_f32: f32 = cpal::Sample::from_sample(sample);
+                                sum += sample_f32;
+                            }
+                            let mono_sample = sum / channels as f32;
+                            buffer.push(mono_sample);
+
+                            let abs_sample = mono_sample.abs();
+                            max_amplitude = max_amplitude.max(abs_sample);
+
+                            if abs_sample > threshold {
+                                has_sound = true;
+                            }
+                        }
+                    }
+
+                    // Update current max amplitude (exponential moving average for smooth display)
+                    {
+                        let mut current_max = current_max_amplitude.lock().unwrap();
+                        *current_max = current_max.max(max_amplitude) * 0.95; // Decay slowly
+                    }
+
+                    // Debug: Print max amplitude every 50 buffers (~1 second)
+                    static mut BUFFER_COUNT: u32 = 0;
+                    unsafe {
+                        BUFFER_COUNT += 1;
+                        if BUFFER_COUNT.is_multiple_of(50) {
+                            println!(
+                                "Max amplitude: {:.6}, Has sound: {}, Threshold: {}, Channels: {}",
+                                max_amplitude, has_sound, threshold, channels
                             );
                         }
                     }
