@@ -171,7 +171,6 @@ impl AudioRecorder {
                     "Mono config not supported ({}), falling back to default config",
                     e
                 );
-
                 let default_stream_config = default_config.config();
                 self.sample_rate = default_stream_config.sample_rate.0;
                 let channels = default_stream_config.channels;
@@ -412,7 +411,11 @@ impl Default for AudioRecorder {
     }
 }
 
-pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32, silence_threshold: f32) -> Result<PathBuf, String> {
+pub fn save_audio_to_wav(
+    audio_data: &[f32],
+    sample_rate: u32,
+    silence_threshold: f32,
+) -> Result<PathBuf, String> {
     // Trim leading silence but keep 0.2 seconds
     let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
 
