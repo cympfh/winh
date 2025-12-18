@@ -10,6 +10,7 @@ pub struct AudioRecorder {
     last_sound_time: Arc<Mutex<Instant>>,
     silence_threshold: f32,
     recording_start_time: Arc<Mutex<Option<Instant>>>,
+    current_max_amplitude: Arc<Mutex<f32>>,
 }
 
 impl AudioRecorder {
@@ -21,7 +22,12 @@ impl AudioRecorder {
             last_sound_time: Arc::new(Mutex::new(Instant::now())),
             silence_threshold,
             recording_start_time: Arc::new(Mutex::new(None)),
+            current_max_amplitude: Arc::new(Mutex::new(0.0)),
         })
+    }
+
+    pub fn get_max_amplitude(&self) -> f32 {
+        *self.current_max_amplitude.lock().unwrap()
     }
 
     pub fn is_silent(&self, silence_duration_secs: f32) -> bool {
@@ -101,6 +107,12 @@ impl AudioRecorder {
         }
         self.reset_silence_timer();
 
+        // Reset max amplitude
+        {
+            let mut max_amp = self.current_max_amplitude.lock().unwrap();
+            *max_amp = 0.0;
+        }
+
         // Set recording start time for grace period
         {
             let mut start_time = self.recording_start_time.lock().unwrap();
@@ -110,6 +122,7 @@ impl AudioRecorder {
         // Create the input stream
         let buffer_clone = Arc::clone(&self.audio_buffer);
         let last_sound_clone = Arc::clone(&self.last_sound_time);
+        let max_amplitude_clone = Arc::clone(&self.current_max_amplitude);
         let threshold = self.silence_threshold;
 
         let stream = match default_config.sample_format() {
@@ -118,6 +131,7 @@ impl AudioRecorder {
                 &config,
                 buffer_clone,
                 last_sound_clone,
+                max_amplitude_clone,
                 threshold,
             ),
             cpal::SampleFormat::I16 => self.build_input_stream::<i16>(
@@ -125,6 +139,7 @@ impl AudioRecorder {
                 &config,
                 buffer_clone,
                 last_sound_clone,
+                max_amplitude_clone,
                 threshold,
             ),
             cpal::SampleFormat::U16 => self.build_input_stream::<u16>(
@@ -132,6 +147,7 @@ impl AudioRecorder {
                 &config,
                 buffer_clone,
                 last_sound_clone,
+                max_amplitude_clone,
                 threshold,
             ),
             _ => return Err("Unsupported sample format".to_string()),
@@ -169,6 +185,7 @@ impl AudioRecorder {
         config: &cpal::StreamConfig,
         buffer: Arc<Mutex<Vec<f32>>>,
         last_sound_time: Arc<Mutex<Instant>>,
+        current_max_amplitude: Arc<Mutex<f32>>,
         threshold: f32,
     ) -> Result<cpal::Stream, String>
     where
@@ -196,6 +213,12 @@ impl AudioRecorder {
                         if abs_sample > threshold {
                             has_sound = true;
                         }
+                    }
+
+                    // Update current max amplitude (exponential moving average for smooth display)
+                    {
+                        let mut current_max = current_max_amplitude.lock().unwrap();
+                        *current_max = current_max.max(max_amplitude) * 0.95; // Decay slowly
                     }
 
                     // Debug: Print max amplitude every 50 buffers (~1 second)

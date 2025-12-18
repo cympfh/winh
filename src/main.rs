@@ -332,7 +332,67 @@ impl eframe::App for WinhApp {
                     }
                 }
 
-                ui.add_space(30.0);
+                ui.add_space(10.0);
+
+                // Volume indicator bar
+                if self.is_recording {
+                    if let Some(recorder) = &self.audio_recorder {
+                        let max_amplitude = recorder.get_max_amplitude();
+                        let bar_width = 200.0;
+                        let bar_height = 10.0;
+
+                        // Clip to 1.2
+                        let clipped_amplitude = max_amplitude.min(1.2);
+                        let bar_fill_width = (clipped_amplitude / 1.2) * bar_width;
+
+                        // Allocate space for the bar
+                        let (bar_rect, _) = ui.allocate_exact_size(
+                            egui::vec2(bar_width, bar_height),
+                            egui::Sense::hover(),
+                        );
+
+                        // Draw background (dark gray)
+                        ui.painter().rect_filled(
+                            bar_rect,
+                            2.0,
+                            egui::Color32::from_rgb(50, 50, 50),
+                        );
+
+                        // Draw filled portion with color coding
+                        if bar_fill_width > 0.0 {
+                            let fill_rect = egui::Rect::from_min_size(
+                                bar_rect.min,
+                                egui::vec2(bar_fill_width, bar_height),
+                            );
+
+                            // Color coding based on amplitude
+                            let color = if max_amplitude < self.config.silence_threshold {
+                                // Gray: below threshold
+                                egui::Color32::from_rgb(150, 150, 150)
+                            } else if max_amplitude < 1.0 {
+                                // Green: normal range
+                                egui::Color32::from_rgb(0, 200, 0)
+                            } else {
+                                // Red: clipping range
+                                egui::Color32::from_rgb(255, 0, 0)
+                            };
+
+                            ui.painter().rect_filled(fill_rect, 2.0, color);
+                        }
+
+                        // Draw border
+                        ui.painter().rect_stroke(
+                            bar_rect,
+                            2.0,
+                            egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 100)),
+                        );
+
+                        // Display amplitude value
+                        ui.label(format!("Level: {:.3}", max_amplitude));
+                    }
+                }
+
+                ui.add_space(20.0);
 
                 // Transcribed text display area
                 ui.label("Transcribed Text:");
