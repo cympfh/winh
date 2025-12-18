@@ -94,6 +94,7 @@ struct WinhApp {
     settings_silence_threshold: f32,
     settings_input_device: Option<String>,
     settings_hotkey: String,
+    settings_custom_prompt: String,
 
     // Device management
     available_devices: Vec<String>,
@@ -157,6 +158,7 @@ impl WinhApp {
             settings_silence_threshold: config.silence_threshold,
             settings_input_device: config.input_device_name.clone(),
             settings_hotkey: config.hotkey.clone(),
+            settings_custom_prompt: config.custom_prompt.clone(),
             available_devices,
             selected_device_index,
             config,
@@ -309,9 +311,22 @@ impl eframe::App for WinhApp {
                             ui.add_space(10.0);
 
                             ui.label("Hotkey (e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
+                            ui.label("Mods: Ctrl, Shift, Alt, Super/Win + Keys: A-Z, 0-9, F1-F12");
                             ui.text_edit_singleline(&mut self.settings_hotkey);
-                            ui.label("Supported modifiers: Ctrl, Shift, Alt, Super/Win");
-                            ui.label("Supported keys: A-Z, 0-9, F1-F12");
+                            ui.add_space(10.0);
+
+                            ui.label("Custom Prompt:");
+                            ui.label("(Leave empty to send no prompt)");
+                            ui.add(
+                                egui::TextEdit::multiline(&mut self.settings_custom_prompt)
+                                    .desired_rows(3)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.horizontal(|ui| {
+                                if ui.button("Reset Prompt to Default").clicked() {
+                                    self.settings_custom_prompt = Config::get_default_prompt();
+                                }
+                            });
                         });
 
                     ui.add_space(10.0);
@@ -325,6 +340,7 @@ impl eframe::App for WinhApp {
                                 .available_devices
                                 .get(self.selected_device_index)
                                 .cloned();
+                            self.config.custom_prompt = self.settings_custom_prompt.clone();
 
                             // Handle hotkey change
                             let new_hotkey_str = self.settings_hotkey.trim().to_string();
@@ -387,6 +403,7 @@ impl eframe::App for WinhApp {
                             self.settings_silence_threshold = self.config.silence_threshold;
                             self.settings_input_device = self.config.input_device_name.clone();
                             self.settings_hotkey = self.config.hotkey.clone();
+                            self.settings_custom_prompt = self.config.custom_prompt.clone();
                             // Restore device index
                             self.selected_device_index =
                                 if let Some(ref device_name) = self.config.input_device_name {
@@ -769,13 +786,14 @@ impl WinhApp {
 
         let api_key = self.config.api_key.clone();
         let model = self.config.model.clone();
+        let custom_prompt = self.config.custom_prompt.clone();
 
         // Spawn background thread for transcription
         std::thread::spawn(move || {
             // Send InProgress message
             let _ = sender.send(TranscriptionMessage::InProgress);
 
-            let client = OpenAIClient::new(api_key, model);
+            let client = OpenAIClient::new(api_key, model, custom_prompt);
 
             match client.transcribe_audio(&audio_path) {
                 Ok(text) => {

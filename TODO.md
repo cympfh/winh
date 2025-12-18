@@ -35,6 +35,14 @@
     - [x] 他アプリに自動入力する (default: ON)
     - Settings画面の "Output Options" セクションに配置
     - 両方のオプションは独立して動作可能
+- [x] カスタムプロンプトを設定できるようにする (2025-12-19)
+    - Config に `custom_prompt` フィールドを追加
+    - 今のプロンプトは default とする ("A Japanese is speaking. Transcribe it.")
+        - デフォルトのプロンプトに戻すボタンも追加
+    - 空文字列の場合はプロンプト無しで送信
+    - Settings画面にマルチラインテキストエリアを追加
+    - OpenAIClient::new がプロンプトを受け取るように変更
+- [ ] 見た目をめっちゃカッコよく洗練させる
 - [ ] Bugfix: 一部マイクが使えない
     - Case 1:
     ```
