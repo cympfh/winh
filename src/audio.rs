@@ -159,7 +159,14 @@ impl AudioRecorder {
             }
             Err(e) => {
                 // Mono config failed, fall back to default config
-                println!("Mono config not supported ({}), falling back to default config", e);
+                println!(
+                    
+
+                    e
+               
+                    "Mono config not supported ({}), falling back to default config",
+                    e
+                );
 
                 let default_stream_config = default_config.config();
                 self.sample_rate = default_stream_config.sample_rate.0;
