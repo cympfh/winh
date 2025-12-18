@@ -2,9 +2,11 @@
 
 Windows 11向けの音声入力・文字起こしGUIアプリケーション
 
-![](./resources/img/winh0.png)
-![](./resources/img/winh1.png)
-![](./resources/img/winh2.png)
+<p align="center">
+  <img src="./resources/img/winh0.png" width="30%" />
+  <img src="./resources/img/winh1.png" width="30%" />
+  <img src="./resources/img/winh2.png" width="30%" />
+</p>
 
 ## ダウンロード
 
