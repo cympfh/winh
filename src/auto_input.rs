@@ -18,8 +18,8 @@ pub fn type_text(text: &str) -> Result<(), String> {
 
 /// Internal synchronous implementation of text typing
 fn type_text_sync(text: &str) -> Result<(), String> {
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
 
     // Small delay to ensure target window is focused
     thread::sleep(Duration::from_millis(100));
