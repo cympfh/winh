@@ -12,32 +12,45 @@ pub struct AudioRecorder {
     recording_start_time: Arc<Mutex<Option<Instant>>>,
 }
 
-
 impl AudioRecorder {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(silence_threshold: f32) -> Result<Self, String> {
         Ok(Self {
             audio_buffer: Arc::new(Mutex::new(Vec::new())),
             stream: None,
             sample_rate: 0,
             last_sound_time: Arc::new(Mutex::new(Instant::now())),
-            silence_threshold: 0.01, // Default threshold
+            silence_threshold,
             recording_start_time: Arc::new(Mutex::new(None)),
         })
     }
-
 
     pub fn is_silent(&self, silence_duration_secs: f32) -> bool {
         // Check if we're still in the grace period (3 seconds after recording starts)
         let start_time = self.recording_start_time.lock().unwrap();
         if let Some(start) = *start_time {
-            if start.elapsed() < Duration::from_secs(3) {
+            let elapsed = start.elapsed();
+            if elapsed < Duration::from_secs(3) {
                 // Still in grace period, not silent
+                if elapsed.as_secs() % 10 == 0 {
+                    println!("Grace period: {:.1}s / 3.0s", elapsed.as_secs_f32());
+                }
                 return false;
             }
         }
 
         let last_sound = self.last_sound_time.lock().unwrap();
-        last_sound.elapsed() >= Duration::from_secs_f32(silence_duration_secs)
+        let silence_duration = last_sound.elapsed();
+        let is_silent = silence_duration >= Duration::from_secs_f32(silence_duration_secs);
+
+        if is_silent {
+            println!(
+                "SILENT DETECTED: {:.1}s >= {:.1}s",
+                silence_duration.as_secs_f32(),
+                silence_duration_secs
+            );
+        }
+
+        is_silent
     }
 
     pub fn get_silence_duration(&self) -> Duration {
@@ -74,8 +87,12 @@ impl AudioRecorder {
         };
 
         self.sample_rate = config.sample_rate.0;
-        println!("Sample rate: {}Hz, Channels: {}, Format: {:?}",
-                 self.sample_rate, config.channels, default_config.sample_format());
+        println!(
+            "Sample rate: {}Hz, Channels: {}, Format: {:?}",
+            self.sample_rate,
+            config.channels,
+            default_config.sample_format()
+        );
 
         // Clear previous buffer and reset silence timer
         {
@@ -166,14 +183,30 @@ impl AudioRecorder {
                 move |data: &[T], _: &cpal::InputCallbackInfo| {
                     let mut buffer = buffer.lock().unwrap();
                     let mut has_sound = false;
+                    let mut max_amplitude = 0.0f32;
 
                     for &sample in data.iter() {
                         let sample_f32: f32 = cpal::Sample::from_sample(sample);
                         buffer.push(sample_f32);
 
+                        let abs_sample = sample_f32.abs();
+                        max_amplitude = max_amplitude.max(abs_sample);
+
                         // Check if this sample exceeds the silence threshold
-                        if sample_f32.abs() > threshold {
+                        if abs_sample > threshold {
                             has_sound = true;
+                        }
+                    }
+
+                    // Debug: Print max amplitude every 50 buffers (~1 second)
+                    static mut BUFFER_COUNT: u32 = 0;
+                    unsafe {
+                        BUFFER_COUNT += 1;
+                        if BUFFER_COUNT % 50 == 0 {
+                            println!(
+                                "Max amplitude: {:.6}, Has sound: {}, Threshold: {}",
+                                max_amplitude, has_sound, threshold
+                            );
                         }
                     }
 
@@ -194,7 +227,7 @@ impl AudioRecorder {
 
 impl Default for AudioRecorder {
     fn default() -> Self {
-        Self::new().unwrap()
+        Self::new(0.01).unwrap()
     }
 }
 
@@ -228,7 +261,10 @@ pub fn save_audio_to_wav(audio_data: &[f32], sample_rate: u32) -> Result<PathBuf
 
     println!(
         "Creating WAV file with: channels={}, sample_rate={}, bits_per_sample={}, samples={}",
-        spec.channels, spec.sample_rate, spec.bits_per_sample, trimmed_data.len()
+        spec.channels,
+        spec.sample_rate,
+        spec.bits_per_sample,
+        trimmed_data.len()
     );
 
     let mut writer = hound::WavWriter::create(&temp_path, spec)

@@ -86,6 +86,7 @@ struct WinhApp {
     settings_api_key: String,
     settings_model: String,
     settings_silence_duration: f32,
+    settings_silence_threshold: f32,
 
     // Error tracking
     last_error: Option<String>,
@@ -103,6 +104,7 @@ impl WinhApp {
             settings_api_key: config.api_key.clone(),
             settings_model: config.model.clone(),
             settings_silence_duration: config.silence_duration_secs,
+            settings_silence_threshold: config.silence_threshold,
             config,
             transcription_receiver: None,
             is_transcribing: false,
@@ -189,11 +191,20 @@ impl eframe::App for WinhApp {
                     ));
                     ui.add_space(10.0);
 
+                    ui.label("Silence Threshold (0.001-0.3):");
+                    ui.add(
+                        egui::Slider::new(&mut self.settings_silence_threshold, 0.001..=0.3)
+                            .logarithmic(true),
+                    );
+                    ui.label(format!("Current: {:.4}", self.settings_silence_threshold));
+                    ui.add_space(10.0);
+
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
                             self.config.api_key = self.settings_api_key.trim().to_string();
                             self.config.model = self.settings_model.trim().to_string();
                             self.config.silence_duration_secs = self.settings_silence_duration;
+                            self.config.silence_threshold = self.settings_silence_threshold;
 
                             match self.config.save() {
                                 Ok(_) => {
@@ -212,6 +223,7 @@ impl eframe::App for WinhApp {
                             self.settings_api_key = self.config.api_key.clone();
                             self.settings_model = self.config.model.clone();
                             self.settings_silence_duration = self.config.silence_duration_secs;
+                            self.settings_silence_threshold = self.config.silence_threshold;
                             self.show_settings = false;
                         }
                     });
@@ -337,7 +349,7 @@ impl WinhApp {
         self.status_message = "Starting recording...".to_string();
         self.recording_info.clear();
 
-        match AudioRecorder::new() {
+        match AudioRecorder::new(self.config.silence_threshold) {
             Ok(mut recorder) => match recorder.start_recording() {
                 Ok(_) => {
                     self.status_message = "Recording... Speak now!".to_string();
