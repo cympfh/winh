@@ -1,4 +1,5 @@
 mod audio;
+mod auto_input;
 mod config;
 mod openai;
 
@@ -24,7 +25,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 400.0])
+            .with_inner_size([400.0, 430.0])
             .with_resizable(false)
             .with_icon(icon_data),
         ..Default::default()
@@ -194,33 +195,49 @@ impl eframe::App for WinhApp {
                         self.transcribed_text = text.clone();
                         self.last_error = None;
 
-                        // Copy to clipboard
-                        match arboard::Clipboard::new() {
-                            Ok(mut clipboard) => {
-                                match clipboard.set_text(&text) {
+                        let mut status_parts = Vec::new();
+
+                        // Conditional clipboard copy
+                        if self.config.clipboard_enabled {
+                            match arboard::Clipboard::new() {
+                                Ok(mut clipboard) => match clipboard.set_text(&text) {
                                     Ok(_) => {
-                                        self.status_message =
-                                            "Transcription completed! Text copied to clipboard."
-                                                .to_string();
-                                        println!(
-                                            "Transcription successful and copied to clipboard: {}",
-                                            text
-                                        );
+                                        status_parts.push("copied to clipboard");
+                                        println!("Text copied to clipboard: {}", text);
                                     }
                                     Err(e) => {
-                                        self.status_message = format!("Transcription completed, but clipboard copy failed: {}", e);
-                                        eprintln!("Failed to copy to clipboard: {}", e);
+                                        status_parts.push("clipboard failed");
+                                        eprintln!("Clipboard error: {}", e);
                                     }
+                                },
+                                Err(e) => {
+                                    status_parts.push("clipboard init failed");
+                                    eprintln!("Clipboard init error: {}", e);
                                 }
                             }
-                            Err(e) => {
-                                self.status_message = format!(
-                                    "Transcription completed, but clipboard init failed: {}",
-                                    e
-                                );
-                                eprintln!("Failed to initialize clipboard: {}", e);
+                        }
+
+                        // Conditional auto-input
+                        if self.config.auto_input_enabled {
+                            match auto_input::type_text(&text) {
+                                Ok(_) => {
+                                    status_parts.push("auto-input started");
+                                    println!("Auto-input started for: {}", text);
+                                }
+                                Err(e) => {
+                                    status_parts.push("auto-input failed");
+                                    eprintln!("Auto-input error: {}", e);
+                                }
                             }
                         }
+
+                        // Build status message
+                        let base = "Transcription completed";
+                        self.status_message = if status_parts.is_empty() {
+                            format!("{}!", base)
+                        } else {
+                            format!("{} ({})", base, status_parts.join(", "))
+                        };
 
                         self.is_transcribing = false;
                         self.transcription_receiver = None;
@@ -576,6 +593,28 @@ impl eframe::App for WinhApp {
                         }
                     }
                 }
+
+                ui.add_space(15.0);
+
+                // Output Options
+                ui.vertical_centered(|ui| {
+                    let clipboard_changed = ui
+                        .checkbox(&mut self.config.clipboard_enabled, "Auto-copy to clipboard")
+                        .changed();
+                    let auto_input_changed = ui
+                        .checkbox(
+                            &mut self.config.auto_input_enabled,
+                            "Auto-input to active window",
+                        )
+                        .changed();
+
+                    // Save config if either checkbox changed
+                    if clipboard_changed || auto_input_changed {
+                        if let Err(e) = self.config.save() {
+                            eprintln!("Failed to save config: {}", e);
+                        }
+                    }
+                });
 
                 ui.add_space(10.0);
 
