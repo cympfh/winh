@@ -257,7 +257,7 @@ impl eframe::App for WinhApp {
 
                 ui.add_space(20.0);
 
-                // Large Start/Stop button
+                // Large Start/Stop button with progress indicator
                 let button_text = if self.is_recording {
                     "⏹ Stop"
                 } else {
@@ -265,9 +265,65 @@ impl eframe::App for WinhApp {
                 };
 
                 let button_size = egui::vec2(200.0, 80.0);
-                let button = egui::Button::new(egui::RichText::new(button_text).size(24.0));
 
-                if ui.add_sized(button_size, button).clicked() {
+                // Calculate silence progress ratio if recording
+                let silence_progress = if self.is_recording {
+                    if let Some(recorder) = &self.audio_recorder {
+                        let silence_elapsed = recorder.get_silence_duration().as_secs_f32();
+                        (silence_elapsed / self.config.silence_duration_secs).min(1.0)
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                };
+
+                // Allocate space for custom button
+                let (rect, response) = ui.allocate_exact_size(button_size, egui::Sense::click());
+
+                // Get visual style based on interaction
+                let visuals = ui.style().interact(&response);
+
+                // Draw button background
+                ui.painter().rect_filled(
+                    rect,
+                    visuals.rounding,
+                    visuals.bg_fill,
+                );
+
+                // Draw progress bar if recording (fill from bottom)
+                if self.is_recording && silence_progress > 0.0 {
+                    let progress_height = rect.height() * silence_progress;
+                    let progress_rect = egui::Rect::from_min_size(
+                        egui::pos2(rect.min.x, rect.max.y - progress_height),
+                        egui::vec2(rect.width(), progress_height),
+                    );
+                    ui.painter().rect_filled(
+                        progress_rect,
+                        visuals.rounding,
+                        egui::Color32::from_rgb(100, 200, 255),
+                    );
+                }
+
+                // Draw button border
+                ui.painter().rect_stroke(
+                    rect,
+                    visuals.rounding,
+                    visuals.bg_stroke,
+                );
+
+                // Draw button text
+                let text_color = visuals.text_color();
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    button_text,
+                    egui::FontId::proportional(24.0),
+                    text_color,
+                );
+
+                // Handle click
+                if response.clicked() {
                     self.is_recording = !self.is_recording;
                     if self.is_recording {
                         self.on_start_recording();
