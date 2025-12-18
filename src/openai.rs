@@ -32,11 +32,22 @@ impl std::error::Error for OpenAIError {}
 pub struct OpenAIClient {
     api_key: String,
     model: String,
+    prompt: Option<String>,
 }
 
 impl OpenAIClient {
-    pub fn new(api_key: String, model: String) -> Self {
-        Self { api_key, model }
+    pub fn new(api_key: String, model: String, prompt: String) -> Self {
+        // Empty string means no prompt
+        let prompt_option = if prompt.is_empty() {
+            None
+        } else {
+            Some(prompt)
+        };
+        Self {
+            api_key,
+            model,
+            prompt: prompt_option,
+        }
     }
 
     pub fn transcribe_audio(&self, audio_file_path: &Path) -> Result<String, OpenAIError> {
@@ -62,7 +73,7 @@ impl OpenAIClient {
             .unwrap_or("audio.wav");
 
         // Create multipart form
-        let form = reqwest::blocking::multipart::Form::new()
+        let mut form = reqwest::blocking::multipart::Form::new()
             .part(
                 "file",
                 reqwest::blocking::multipart::Part::bytes(audio_data)
@@ -72,11 +83,15 @@ impl OpenAIClient {
                         OpenAIError::FileError(format!("Failed to set MIME type: {}", e))
                     })?,
             )
-            .text("model", self.model.clone())
-            .text(
-                "prompt",
-                "A Japanese is speaking. Transcribe it.".to_string(),
-            );
+            .text("model", self.model.clone());
+
+        // Add prompt if provided
+        if let Some(ref prompt) = self.prompt {
+            println!("Using custom prompt: {}", prompt);
+            form = form.text("prompt", prompt.clone());
+        } else {
+            println!("No prompt specified");
+        }
 
         // Send request
         let client = reqwest::blocking::Client::new();
@@ -119,8 +134,23 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = OpenAIClient::new("test_key".to_string(), "whisper-1".to_string());
+        let client = OpenAIClient::new(
+            "test_key".to_string(),
+            "whisper-1".to_string(),
+            "test prompt".to_string(),
+        );
         assert_eq!(client.api_key, "test_key");
         assert_eq!(client.model, "whisper-1");
+        assert_eq!(client.prompt, Some("test prompt".to_string()));
+    }
+
+    #[test]
+    fn test_client_creation_with_empty_prompt() {
+        let client = OpenAIClient::new(
+            "test_key".to_string(),
+            "whisper-1".to_string(),
+            "".to_string(),
+        );
+        assert_eq!(client.prompt, None);
     }
 }

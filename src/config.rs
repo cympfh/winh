@@ -17,6 +17,8 @@ pub struct Config {
     pub clipboard_enabled: bool,
     #[serde(default = "default_auto_input_enabled")]
     pub auto_input_enabled: bool,
+    #[serde(default = "default_custom_prompt")]
+    pub custom_prompt: String,
 }
 
 fn default_hotkey() -> String {
@@ -31,6 +33,10 @@ fn default_auto_input_enabled() -> bool {
     true
 }
 
+fn default_custom_prompt() -> String {
+    "A Japanese is speaking. Transcribe it.".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -42,11 +48,17 @@ impl Default for Config {
             hotkey: default_hotkey(),
             clipboard_enabled: default_clipboard_enabled(),
             auto_input_enabled: default_auto_input_enabled(),
+            custom_prompt: default_custom_prompt(),
         }
     }
 }
 
 impl Config {
+    /// Get the default prompt
+    pub fn get_default_prompt() -> String {
+        default_custom_prompt()
+    }
+
     /// Parse hotkey string into HotKey
     /// Format: "Ctrl+Shift+R", "Alt+S", "Ctrl+Alt+T", etc.
     pub fn parse_hotkey(&self) -> Result<HotKey, String> {
