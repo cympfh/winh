@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - Silence duration (0.5-10.0 seconds)
   - Silence threshold (0.001-0.3, logarithmic scale)
   - Input device selection
-  - Hotkey customization (Ctrl/Shift/Alt/Super + A-Z/F1-F12)
+  - Hotkey customization (Ctrl/Shift/Alt/Super + A-Z/0-9/F1-F12)
 - Transcribed text area (read-only, click to copy to clipboard)
 - Local settings persistence (JSON format in user config directory)
 - Japanese font support (Noto Sans JP)

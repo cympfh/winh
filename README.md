@@ -56,9 +56,9 @@ winhは、音声入力を簡単に文字起こしできるシンプルなデス�
    - **Input Device**: 使用するマイクデバイス（デフォルト: Windows既定）
      - ドロップダウンから任意のマイクデバイスを選択可能
    - **Hotkey**: グローバルホットキー（デフォルト: Ctrl+Shift+H）
-     - 形式: `Ctrl+Shift+H`, `Alt+S`, `Ctrl+Alt+F1` など
+     - 形式: `Ctrl+Shift+H`, `Alt+1`, `Ctrl+Alt+F1` など
      - 対応修飾キー: Ctrl, Shift, Alt, Super/Win
-     - 対応キー: A-Z, F1-F12
+     - 対応キー: A-Z, 0-9, F1-F12
 6. 「Save」をクリックして設定を保存
 
 ### 音声入力と文字起こし

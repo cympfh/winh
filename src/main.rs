@@ -291,10 +291,10 @@ impl eframe::App for WinhApp {
                                 });
                             ui.add_space(10.0);
 
-                            ui.label("Hotkey (e.g. Ctrl+Shift+R, Alt+S, Ctrl+Alt+F1):");
+                            ui.label("Hotkey (e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
                             ui.text_edit_singleline(&mut self.settings_hotkey);
                             ui.label("Supported modifiers: Ctrl, Shift, Alt, Super/Win");
-                            ui.label("Supported keys: A-Z, F1-F12");
+                            ui.label("Supported keys: A-Z, 0-9, F1-F12");
                         });
 
                     ui.add_space(10.0);
