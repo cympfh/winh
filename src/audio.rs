@@ -69,14 +69,22 @@ impl AudioRecorder {
         *last_sound = Instant::now();
     }
 
-    pub fn start_recording(&mut self) -> Result<(), String> {
+    pub fn start_recording_with_device(&mut self, device_name: Option<&str>) -> Result<(), String> {
         // Get the default host
         let host = cpal::default_host();
 
-        // Get the default input device
-        let device = host
-            .default_input_device()
-            .ok_or("No input device available")?;
+        // Get the input device
+        let device = if let Some(name) = device_name {
+            // Find device by name
+            host.input_devices()
+                .map_err(|e| format!("Failed to get input devices: {}", e))?
+                .find(|d| d.name().map(|n| n == name).unwrap_or(false))
+                .ok_or(format!("Input device '{}' not found", name))?
+        } else {
+            // Use default device
+            host.default_input_device()
+                .ok_or("No input device available")?
+        };
 
         println!("Using input device: {}", device.name().unwrap_or_default());
 
@@ -474,4 +482,21 @@ fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize)
     let start_idx = first_sound_idx.saturating_sub(keep_samples);
 
     &audio_data[start_idx..]
+}
+
+/// Get list of available input devices
+pub fn get_input_devices() -> Result<Vec<String>, String> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("Failed to get input devices: {}", e))?;
+
+    let mut device_names = Vec::new();
+    for device in devices {
+        if let Ok(name) = device.name() {
+            device_names.push(name);
+        }
+    }
+
+    Ok(device_names)
 }
