@@ -2,6 +2,18 @@
 
 Windows 11向けの音声入力・文字起こしGUIアプリケーション
 
+<p align="center">
+  <img src="./resources/img/winh0.png" width="30%" />
+  <img src="./resources/img/winh1.png" width="30%" />
+  <img src="./resources/img/winh2.png" width="30%" />
+</p>
+
+## ダウンロード
+
+最新版のビルド済みバイナリは [Releases ページ](https://github.com/cympfh/winh/releases) からダウンロードできます。
+
+`winh.exe` をダウンロードして実行するだけで使用できます（インストーラー不要）。
+
 ## 概要
 
 winhは、音声入力を簡単に文字起こしできるシンプルなデスクトップアプリケーションです。OpenAI Whisper APIを使用して、高精度な音声認識を提供します。
@@ -21,59 +33,6 @@ winhは、音声入力を簡単に文字起こしできるシンプルなデス�
 - **エラー表示**: API キー未設定やネットワークエラーを視覚的に表示
 - **軽量**: 単一のexeファイルで動作（インストーラー不要、約30MB）
 - **モノラル録音**: Windows デフォルト音声入力をモノラルで録音
-
-## セットアップ
-
-### 前提条件
-
-- Rust (最新の安定版)
-- mingw-w64ツールチェーン（WSLでビルドする場合）
-
-### WSL/Linuxでのビルド環境構築
-
-1. **依存パッケージのインストール**
-   ```bash
-   sudo apt update
-   sudo apt install -y mingw-w64
-   ```
-
-2. **Rustターゲットの追加**
-   ```bash
-   rustup target add x86_64-pc-windows-gnu
-   ```
-
-## ビルド方法
-
-### Makefileを使用する場合（推奨）
-
-```bash
-# ヘルプを表示
-make help
-
-# 依存関係のインストール（初回のみ）
-make install-deps
-
-# デバッグビルド
-make build-windows
-
-# リリースビルド（最適化版）
-make build-windows-release
-```
-
-### 手動でビルドする場合
-
-```bash
-# デバッグビルド
-cargo build --target x86_64-pc-windows-gnu
-
-# リリースビルド
-cargo build --release --target x86_64-pc-windows-gnu
-```
-
-### 生成されるファイル
-
-- デバッグ版: `target/x86_64-pc-windows-gnu/debug/winh.exe`
-- リリース版: `target/x86_64-pc-windows-gnu/release/winh.exe`
 
 ## 使い方
 
