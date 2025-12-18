@@ -517,7 +517,7 @@ impl eframe::App for WinhApp {
                 );
 
                 // Auto-stop if silence duration exceeded
-                if recorder.is_silent(self.config.silence_duration_secs) && buffer_size > 0 {
+                if recorder.is_silent(self.config.silence_duration_secs) {
                     println!(
                         "Silence detected for {:.1}s - auto-stopping",
                         self.config.silence_duration_secs

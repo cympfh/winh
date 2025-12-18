@@ -13,12 +13,21 @@
     - 「Windows既定」を先頭に追加（デフォルトデバイスを使用）
     - `AudioRecorder::start_recording_with_device()` で指定デバイスを使用
 - [ ] Bugfix: 一部マイクが使えない
+    - Case 1:
     ```
     Recording started
     Using input device: マイク (UGREEN Camera Audio)
     Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
     Sample rate: 48000Hz, Channels: 2 (using default), Format: F32
     Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x88890008
+    ```
+    - Case 2:
+    ```
+    Recording started
+    Using input device: CABLE-A Output (VB-Audio Cable A)
+    Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
+    Sample rate: 44100Hz, Channels: 2 (using default), Format: F32
+    Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x8889000A
     ```
 - [ ] ショートカットキー対応（例: Ctrl+Shift+Rで録音開始/停止）
     - 他のアプリケーションがフォーカスされている場合でも動作
