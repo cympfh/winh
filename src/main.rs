@@ -191,8 +191,8 @@ impl eframe::App for WinhApp {
 
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
-                            self.config.api_key = self.settings_api_key.clone();
-                            self.config.model = self.settings_model.clone();
+                            self.config.api_key = self.settings_api_key.trim().to_string();
+                            self.config.model = self.settings_model.trim().to_string();
                             self.config.silence_duration_secs = self.settings_silence_duration;
 
                             match self.config.save() {
