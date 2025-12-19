@@ -25,7 +25,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 430.0])
+            .with_inner_size([380.0, 430.0])
             .with_resizable(false)
             .with_icon(icon_data),
         ..Default::default()
@@ -310,7 +310,8 @@ impl eframe::App for WinhApp {
                                 });
                             ui.add_space(10.0);
 
-                            ui.label("Hotkey (e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
+                            ui.label("Hotkey:");
+                            ui.label("(e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
                             ui.label("Mods: Ctrl, Shift, Alt, Super/Win + Keys: A-Z, 0-9, F1-F12");
                             ui.text_edit_singleline(&mut self.settings_hotkey);
                             ui.add_space(10.0);
@@ -426,7 +427,6 @@ impl eframe::App for WinhApp {
 
                 // Header with title and settings button
                 ui.horizontal(|ui| {
-                    ui.heading("Voice Transcription");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("⚙ Settings").clicked() {
                             self.show_settings = true;
@@ -447,6 +447,9 @@ impl eframe::App for WinhApp {
 
                 ui.add_space(20.0);
 
+                // Consistent width for button and text area
+                let ui_width = 300.0;
+
                 // Large Start/Stop button with progress indicator
                 let button_text = if self.is_recording {
                     "⏹ Stop"
@@ -454,7 +457,7 @@ impl eframe::App for WinhApp {
                     "⏺ Start"
                 };
 
-                let button_size = egui::vec2(200.0, 80.0);
+                let button_size = egui::vec2(ui_width, 80.0);
 
                 // Calculate silence progress ratio if recording
                 let silence_progress = if self.is_recording {
@@ -522,7 +525,7 @@ impl eframe::App for WinhApp {
                 if self.is_recording {
                     if let Some(recorder) = &self.audio_recorder {
                         let max_amplitude = recorder.get_max_amplitude();
-                        let bar_width = 200.0;
+                        let bar_width = ui_width;
                         let bar_height = 10.0;
 
                         // Clip to 1.2
@@ -579,13 +582,11 @@ impl eframe::App for WinhApp {
                 ui.add_space(20.0);
 
                 // Transcribed text display area (click to copy)
-                ui.label("Transcribed Text (click to copy):");
-                ui.add_space(5.0);
-
                 let text_response = egui::ScrollArea::vertical()
                     .max_height(100.0)
                     .show(ui, |ui| {
-                        let output = ui.add(
+                        let output = ui.add_sized(
+                            egui::vec2(ui_width, 100.0),
                             egui::TextEdit::multiline(&mut self.transcribed_text)
                                 .interactive(false),
                         );
