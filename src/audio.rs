@@ -474,16 +474,32 @@ impl Default for AudioRecorder {
 }
 
 fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize) -> &[f32] {
+    if audio_data.is_empty() {
+        return audio_data;
+    }
+
     // Find the first sample that exceeds the threshold
-    let first_sound_idx = audio_data
+    let first_sound_idx = match audio_data
         .iter()
         .position(|&sample| sample.abs() > threshold)
-        .unwrap_or(0);
+    {
+        Some(idx) => idx,
+        None => return &[], // All samples are silent, return empty slice
+    };
+
+    // Find the last sample that exceeds the threshold
+    let last_sound_idx = audio_data
+        .iter()
+        .rposition(|&sample| sample.abs() > threshold)
+        .unwrap(); // Safe to unwrap because we know at least first_sound_idx exists
 
     // Calculate start index: go back by keep_samples, but not before 0
     let start_idx = first_sound_idx.saturating_sub(keep_samples);
 
-    &audio_data[start_idx..]
+    // Calculate end index: go forward by keep_samples, but not beyond the end
+    let end_idx = (last_sound_idx + keep_samples + 1).min(audio_data.len());
+
+    &audio_data[start_idx..end_idx]
 }
 
 /// Get list of available input devices
