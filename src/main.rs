@@ -3,7 +3,7 @@ mod auto_input;
 mod config;
 mod openai;
 
-use audio::{save_audio_to_wav, AudioRecorder};
+use audio::AudioRecorder;
 use config::Config;
 use eframe::egui;
 use global_hotkey::{
@@ -774,7 +774,6 @@ impl WinhApp {
         if let Some(mut recorder) = self.audio_recorder.take() {
             let audio_data = recorder.stop_recording();
             let sample_rate = recorder.get_sample_rate();
-            let silence_threshold = recorder.get_silence_threshold();
 
             println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
             println!(
@@ -789,7 +788,7 @@ impl WinhApp {
             }
 
             // Save audio to WAV file
-            match save_audio_to_wav(&audio_data, sample_rate, silence_threshold) {
+            match recorder.save_audio_to_wav(&audio_data, sample_rate) {
                 Ok(path) => {
                     let _duration = audio_data.len() as f32 / sample_rate as f32;
                     self.audio_file_path = Some(path.clone());
