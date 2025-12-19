@@ -73,6 +73,8 @@ enum TranscriptionMessage {
 
 struct WinhApp {
     is_recording: bool,
+    is_preparing: bool,
+    prepare_start_time: Option<std::time::Instant>,
     transcribed_text: String,
     audio_recorder: Option<AudioRecorder>,
     status_message: String,
@@ -147,6 +149,8 @@ impl WinhApp {
 
         Self {
             is_recording: false,
+            is_preparing: false,
+            prepare_start_time: None,
             transcribed_text: String::new(),
             audio_recorder: None,
             status_message: String::new(),
@@ -178,11 +182,26 @@ impl eframe::App for WinhApp {
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             if event.id == self.current_hotkey.id() {
                 println!("Global hotkey triggered: {}", self.config.hotkey);
-                if !self.is_recording && !self.is_transcribing {
+                if !self.is_recording && !self.is_transcribing && !self.is_preparing {
                     self.is_recording = true;
-                    self.on_start_recording();
+                    self.is_preparing = false;
+                    self.is_transcribing = false;
+                    self.on_actually_start_recording();
                 }
             }
+        }
+
+        // Check if preparation period (0.5s) has elapsed
+        if self.is_preparing {
+            if let Some(start_time) = self.prepare_start_time {
+                if start_time.elapsed() >= std::time::Duration::from_millis(500) {
+                    self.is_preparing = false;
+                    self.prepare_start_time = None;
+                    self.is_recording = true;
+                    self.on_actually_start_recording();
+                }
+            }
+            ctx.request_repaint();
         }
 
         // Check for transcription results
@@ -440,6 +459,11 @@ impl eframe::App for WinhApp {
                     ui.colored_label(egui::Color32::from_rgb(100, 150, 255), &self.status_message);
                 }
 
+                // Preparation message
+                if self.is_preparing {
+                    ui.colored_label(egui::Color32::from_rgb(255, 200, 100), "Preparing...");
+                }
+
                 // Recording info (buffer size, sample rate)
                 if !self.recording_info.is_empty() {
                     ui.label(&self.recording_info);
@@ -453,6 +477,8 @@ impl eframe::App for WinhApp {
                 // Large Start/Stop button with progress indicator
                 let button_text = if self.is_recording {
                     "⏹ Stop"
+                } else if self.is_preparing {
+                    "⏳ Preparing..."
                 } else {
                     "⏺ Start"
                 };
@@ -511,11 +537,16 @@ impl eframe::App for WinhApp {
 
                 // Handle click
                 if response.clicked() {
-                    self.is_recording = !self.is_recording;
-                    if self.is_recording {
-                        self.on_start_recording();
-                    } else {
+                    if self.is_preparing {
+                        // Cancel preparation
+                        self.is_preparing = false;
+                        self.prepare_start_time = None;
+                        self.status_message = "Recording cancelled".to_string();
+                    } else if self.is_recording {
+                        self.is_recording = false;
                         self.on_stop_recording();
+                    } else {
+                        self.on_prepare_recording();
                     }
                 }
 
@@ -694,7 +725,14 @@ impl eframe::App for WinhApp {
 }
 
 impl WinhApp {
-    fn on_start_recording(&mut self) {
+    fn on_prepare_recording(&mut self) {
+        println!("Preparing to record...");
+        self.is_preparing = true;
+        self.prepare_start_time = Some(std::time::Instant::now());
+        self.status_message = "Preparing to record...".to_string();
+    }
+
+    fn on_actually_start_recording(&mut self) {
         println!("Recording started");
         self.status_message = "Starting recording...".to_string();
         self.recording_info.clear();
