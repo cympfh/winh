@@ -54,9 +54,10 @@
     - 準備中にボタンクリックでキャンセル可能
     - ホットキーは準備期間をスキップして即座に録音開始
         - ユーザーによる変更: ホットキーでは `on_actually_start_recording()` を直接呼び出し
-- [ ] @src/main.rs L242
+- [x] @src/main.rs L242 (2025-12-22)
     - self.config.clipboard_enabled なら type_text の代わりに Ctrl+V を送信する
-        - auto_input に send_key を実装する？
+        - auto_input に send_ctrl_v() を実装
+        - main.rs で clipboard_enabled が true の場合は send_ctrl_v() を呼び出す
 - [ ] Bugfix: 一部マイクが使えない
     - Case 1:
     ```

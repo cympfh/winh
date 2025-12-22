@@ -240,14 +240,29 @@ impl eframe::App for WinhApp {
 
                         // Conditional auto-input
                         if self.config.auto_input_enabled {
-                            match auto_input::type_text(&text) {
-                                Ok(_) => {
-                                    status_parts.push("auto-input started");
-                                    println!("Auto-input started for: {}", text);
+                            // If clipboard is enabled, use Ctrl+V to paste
+                            // Otherwise, type the text character-by-character
+                            if self.config.clipboard_enabled {
+                                match auto_input::send_ctrl_v() {
+                                    Ok(_) => {
+                                        status_parts.push("auto-input (Ctrl+V) started");
+                                        println!("Auto-input (Ctrl+V) started");
+                                    }
+                                    Err(e) => {
+                                        status_parts.push("auto-input (Ctrl+V) failed");
+                                        eprintln!("Auto-input (Ctrl+V) error: {}", e);
+                                    }
                                 }
-                                Err(e) => {
-                                    status_parts.push("auto-input failed");
-                                    eprintln!("Auto-input error: {}", e);
+                            } else {
+                                match auto_input::type_text(&text) {
+                                    Ok(_) => {
+                                        status_parts.push("auto-input started");
+                                        println!("Auto-input started for: {}", text);
+                                    }
+                                    Err(e) => {
+                                        status_parts.push("auto-input failed");
+                                        eprintln!("Auto-input error: {}", e);
+                                    }
                                 }
                             }
                         }
