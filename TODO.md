@@ -42,7 +42,22 @@
     - 空文字列の場合はプロンプト無しで送信
     - Settings画面にマルチラインテキストエリアを追加
     - OpenAIClient::new がプロンプトを受け取るように変更
-- [ ] 見た目をめっちゃカッコよく洗練させる
+- [x] 見た目を洗練させる (2025-12-19)
+    - ボタンの横幅とtextareaの幅を揃える（300pxに統一）
+    - ウィンドウサイズを380x430に最適化
+- [x] Start押してから0.5秒後に録音開始 (2025-12-19)
+    - `is_preparing` フラグと `prepare_start_time` を WinhApp に追加
+    - ボタンクリック時は `on_prepare_recording()` で準備状態に移行
+    - 0.5秒経過後に `on_actually_start_recording()` で実際の録音開始
+    - 準備中はボタンテキストが「⏳ Preparing...」に変化
+    - 準備中のステータスメッセージ表示（オレンジ色）
+    - 準備中にボタンクリックでキャンセル可能
+    - ホットキーは準備期間をスキップして即座に録音開始
+        - ユーザーによる変更: ホットキーでは `on_actually_start_recording()` を直接呼び出し
+- [x] @src/main.rs L242 (2025-12-22)
+    - self.config.clipboard_enabled なら type_text の代わりに Ctrl+V を送信する
+        - auto_input に send_ctrl_v() を実装
+        - main.rs で clipboard_enabled が true の場合は send_ctrl_v() を呼び出す
 - [ ] Bugfix: 一部マイクが使えない
     - Case 1:
     ```
@@ -190,3 +205,5 @@
     - 1.92.0
     - rustfmt でコードを整形すること
     - cargo test でユニットテストを実行すること
+    - clippy は使わない
+    - ビルドは Make コマンドで行うこと

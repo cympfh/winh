@@ -243,10 +243,6 @@ impl AudioRecorder {
         self.sample_rate
     }
 
-    pub fn get_silence_threshold(&self) -> f32 {
-        self.silence_threshold
-    }
-
     fn build_input_stream<T>(
         &self,
         device: &cpal::Device,
@@ -403,6 +399,72 @@ impl AudioRecorder {
 
         Ok(stream)
     }
+
+    pub fn save_audio_to_wav(
+        &self,
+        audio_data: &[f32],
+        sample_rate: u32,
+    ) -> Result<PathBuf, String> {
+        // Trim leading silence but keep 0.2 seconds
+        let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
+
+        let trimmed_data = trim_leading_silence(audio_data, self.silence_threshold, keep_samples);
+
+        if trimmed_data.is_empty() {
+            return Err("Audio data is empty after trimming".to_string());
+        }
+
+        // Create a temporary file
+        let temp_file = tempfile::Builder::new()
+            .prefix("winh_audio_")
+            .suffix(".wav")
+            .tempfile()
+            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+
+        let temp_path = temp_file.path().to_path_buf();
+
+        // Create WAV writer
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+
+        println!(
+            "Creating WAV file with: channels={}, sample_rate={}, bits_per_sample={}, samples={}",
+            spec.channels,
+            spec.sample_rate,
+            spec.bits_per_sample,
+            trimmed_data.len()
+        );
+
+        let mut writer = hound::WavWriter::create(&temp_path, spec)
+            .map_err(|e| format!("Failed to create WAV writer: {}", e))?;
+
+        // Write samples
+        for &sample in trimmed_data {
+            // Convert f32 to i16
+            let sample_i16 = (sample * i16::MAX as f32) as i16;
+            writer
+                .write_sample(sample_i16)
+                .map_err(|e| format!("Failed to write sample: {}", e))?;
+        }
+
+        writer
+            .finalize()
+            .map_err(|e| format!("Failed to finalize WAV file: {}", e))?;
+
+        // Keep the file alive by forgetting the tempfile handle
+        std::mem::forget(temp_file);
+
+        println!(
+            "Audio saved to: {:?} (trimmed {} samples from start)",
+            temp_path,
+            audio_data.len() - trimmed_data.len()
+        );
+        Ok(temp_path)
+    }
 }
 
 impl Default for AudioRecorder {
@@ -411,83 +473,33 @@ impl Default for AudioRecorder {
     }
 }
 
-pub fn save_audio_to_wav(
-    audio_data: &[f32],
-    sample_rate: u32,
-    silence_threshold: f32,
-) -> Result<PathBuf, String> {
-    // Trim leading silence but keep 0.2 seconds
-    let keep_samples = (sample_rate as f32 * 0.2) as usize; // 0.2 seconds worth of samples
-
-    let trimmed_data = trim_leading_silence(audio_data, silence_threshold, keep_samples);
-
-    if trimmed_data.is_empty() {
-        return Err("Audio data is empty after trimming".to_string());
-    }
-
-    // Create a temporary file
-    let temp_file = tempfile::Builder::new()
-        .prefix("winh_audio_")
-        .suffix(".wav")
-        .tempfile()
-        .map_err(|e| format!("Failed to create temp file: {}", e))?;
-
-    let temp_path = temp_file.path().to_path_buf();
-
-    // Create WAV writer
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    println!(
-        "Creating WAV file with: channels={}, sample_rate={}, bits_per_sample={}, samples={}",
-        spec.channels,
-        spec.sample_rate,
-        spec.bits_per_sample,
-        trimmed_data.len()
-    );
-
-    let mut writer = hound::WavWriter::create(&temp_path, spec)
-        .map_err(|e| format!("Failed to create WAV writer: {}", e))?;
-
-    // Write samples
-    for &sample in trimmed_data {
-        // Convert f32 to i16
-        let sample_i16 = (sample * i16::MAX as f32) as i16;
-        writer
-            .write_sample(sample_i16)
-            .map_err(|e| format!("Failed to write sample: {}", e))?;
-    }
-
-    writer
-        .finalize()
-        .map_err(|e| format!("Failed to finalize WAV file: {}", e))?;
-
-    // Keep the file alive by forgetting the tempfile handle
-    std::mem::forget(temp_file);
-
-    println!(
-        "Audio saved to: {:?} (trimmed {} samples from start)",
-        temp_path,
-        audio_data.len() - trimmed_data.len()
-    );
-    Ok(temp_path)
-}
-
 fn trim_leading_silence(audio_data: &[f32], threshold: f32, keep_samples: usize) -> &[f32] {
+    if audio_data.is_empty() {
+        return audio_data;
+    }
+
     // Find the first sample that exceeds the threshold
-    let first_sound_idx = audio_data
+    let first_sound_idx = match audio_data
         .iter()
         .position(|&sample| sample.abs() > threshold)
-        .unwrap_or(0);
+    {
+        Some(idx) => idx,
+        None => return &[], // All samples are silent, return empty slice
+    };
+
+    // Find the last sample that exceeds the threshold
+    let last_sound_idx = audio_data
+        .iter()
+        .rposition(|&sample| sample.abs() > threshold)
+        .unwrap(); // Safe to unwrap because we know at least first_sound_idx exists
 
     // Calculate start index: go back by keep_samples, but not before 0
     let start_idx = first_sound_idx.saturating_sub(keep_samples);
 
-    &audio_data[start_idx..]
+    // Calculate end index: go forward by keep_samples, but not beyond the end
+    let end_idx = (last_sound_idx + keep_samples + 1).min(audio_data.len());
+
+    &audio_data[start_idx..end_idx]
 }
 
 /// Get list of available input devices

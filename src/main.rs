@@ -3,7 +3,7 @@ mod auto_input;
 mod config;
 mod openai;
 
-use audio::{save_audio_to_wav, AudioRecorder};
+use audio::AudioRecorder;
 use config::Config;
 use eframe::egui;
 use global_hotkey::{
@@ -25,8 +25,8 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 430.0])
-            .with_resizable(false)
+            .with_inner_size([380.0, 430.0])
+            .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
     };
@@ -73,6 +73,8 @@ enum TranscriptionMessage {
 
 struct WinhApp {
     is_recording: bool,
+    is_preparing: bool,
+    prepare_start_time: Option<std::time::Instant>,
     transcribed_text: String,
     audio_recorder: Option<AudioRecorder>,
     status_message: String,
@@ -147,6 +149,8 @@ impl WinhApp {
 
         Self {
             is_recording: false,
+            is_preparing: false,
+            prepare_start_time: None,
             transcribed_text: String::new(),
             audio_recorder: None,
             status_message: String::new(),
@@ -178,11 +182,26 @@ impl eframe::App for WinhApp {
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             if event.id == self.current_hotkey.id() {
                 println!("Global hotkey triggered: {}", self.config.hotkey);
-                if !self.is_recording && !self.is_transcribing {
+                if !self.is_recording && !self.is_transcribing && !self.is_preparing {
                     self.is_recording = true;
-                    self.on_start_recording();
+                    self.is_preparing = false;
+                    self.is_transcribing = false;
+                    self.on_actually_start_recording();
                 }
             }
+        }
+
+        // Check if preparation period (0.5s) has elapsed
+        if self.is_preparing {
+            if let Some(start_time) = self.prepare_start_time {
+                if start_time.elapsed() >= std::time::Duration::from_millis(500) {
+                    self.is_preparing = false;
+                    self.prepare_start_time = None;
+                    self.is_recording = true;
+                    self.on_actually_start_recording();
+                }
+            }
+            ctx.request_repaint();
         }
 
         // Check for transcription results
@@ -221,14 +240,29 @@ impl eframe::App for WinhApp {
 
                         // Conditional auto-input
                         if self.config.auto_input_enabled {
-                            match auto_input::type_text(&text) {
-                                Ok(_) => {
-                                    status_parts.push("auto-input started");
-                                    println!("Auto-input started for: {}", text);
+                            // If clipboard is enabled, use Ctrl+V to paste
+                            // Otherwise, type the text character-by-character
+                            if self.config.clipboard_enabled {
+                                match auto_input::send_ctrl_v() {
+                                    Ok(_) => {
+                                        status_parts.push("auto-input (Ctrl+V) started");
+                                        println!("Auto-input (Ctrl+V) started");
+                                    }
+                                    Err(e) => {
+                                        status_parts.push("auto-input (Ctrl+V) failed");
+                                        eprintln!("Auto-input (Ctrl+V) error: {}", e);
+                                    }
                                 }
-                                Err(e) => {
-                                    status_parts.push("auto-input failed");
-                                    eprintln!("Auto-input error: {}", e);
+                            } else {
+                                match auto_input::type_text(&text) {
+                                    Ok(_) => {
+                                        status_parts.push("auto-input started");
+                                        println!("Auto-input started for: {}", text);
+                                    }
+                                    Err(e) => {
+                                        status_parts.push("auto-input failed");
+                                        eprintln!("Auto-input error: {}", e);
+                                    }
                                 }
                             }
                         }
@@ -310,7 +344,8 @@ impl eframe::App for WinhApp {
                                 });
                             ui.add_space(10.0);
 
-                            ui.label("Hotkey (e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
+                            ui.label("Hotkey:");
+                            ui.label("(e.g. Ctrl+Shift+H, Alt+1, Ctrl+Alt+F1):");
                             ui.label("Mods: Ctrl, Shift, Alt, Super/Win + Keys: A-Z, 0-9, F1-F12");
                             ui.text_edit_singleline(&mut self.settings_hotkey);
                             ui.add_space(10.0);
@@ -426,7 +461,6 @@ impl eframe::App for WinhApp {
 
                 // Header with title and settings button
                 ui.horizontal(|ui| {
-                    ui.heading("Voice Transcription");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui.button("⚙ Settings").clicked() {
                             self.show_settings = true;
@@ -440,6 +474,11 @@ impl eframe::App for WinhApp {
                     ui.colored_label(egui::Color32::from_rgb(100, 150, 255), &self.status_message);
                 }
 
+                // Preparation message
+                if self.is_preparing {
+                    ui.colored_label(egui::Color32::from_rgb(255, 200, 100), "Preparing...");
+                }
+
                 // Recording info (buffer size, sample rate)
                 if !self.recording_info.is_empty() {
                     ui.label(&self.recording_info);
@@ -447,14 +486,19 @@ impl eframe::App for WinhApp {
 
                 ui.add_space(20.0);
 
+                // Consistent width for button and text area
+                let ui_width = 300.0;
+
                 // Large Start/Stop button with progress indicator
                 let button_text = if self.is_recording {
                     "⏹ Stop"
+                } else if self.is_preparing {
+                    "⏳ Preparing..."
                 } else {
                     "⏺ Start"
                 };
 
-                let button_size = egui::vec2(200.0, 80.0);
+                let button_size = egui::vec2(ui_width, 80.0);
 
                 // Calculate silence progress ratio if recording
                 let silence_progress = if self.is_recording {
@@ -508,11 +552,16 @@ impl eframe::App for WinhApp {
 
                 // Handle click
                 if response.clicked() {
-                    self.is_recording = !self.is_recording;
-                    if self.is_recording {
-                        self.on_start_recording();
-                    } else {
+                    if self.is_preparing {
+                        // Cancel preparation
+                        self.is_preparing = false;
+                        self.prepare_start_time = None;
+                        self.status_message = "Recording cancelled".to_string();
+                    } else if self.is_recording {
+                        self.is_recording = false;
                         self.on_stop_recording();
+                    } else {
+                        self.on_prepare_recording();
                     }
                 }
 
@@ -522,7 +571,7 @@ impl eframe::App for WinhApp {
                 if self.is_recording {
                     if let Some(recorder) = &self.audio_recorder {
                         let max_amplitude = recorder.get_max_amplitude();
-                        let bar_width = 200.0;
+                        let bar_width = ui_width;
                         let bar_height = 10.0;
 
                         // Clip to 1.2
@@ -579,13 +628,11 @@ impl eframe::App for WinhApp {
                 ui.add_space(20.0);
 
                 // Transcribed text display area (click to copy)
-                ui.label("Transcribed Text (click to copy):");
-                ui.add_space(5.0);
-
                 let text_response = egui::ScrollArea::vertical()
                     .max_height(100.0)
                     .show(ui, |ui| {
-                        let output = ui.add(
+                        let output = ui.add_sized(
+                            egui::vec2(ui_width, 100.0),
                             egui::TextEdit::multiline(&mut self.transcribed_text)
                                 .interactive(false),
                         );
@@ -693,7 +740,14 @@ impl eframe::App for WinhApp {
 }
 
 impl WinhApp {
-    fn on_start_recording(&mut self) {
+    fn on_prepare_recording(&mut self) {
+        println!("Preparing to record...");
+        self.is_preparing = true;
+        self.prepare_start_time = Some(std::time::Instant::now());
+        self.status_message = "Preparing to record...".to_string();
+    }
+
+    fn on_actually_start_recording(&mut self) {
         println!("Recording started");
         self.status_message = "Starting recording...".to_string();
         self.recording_info.clear();
@@ -735,7 +789,6 @@ impl WinhApp {
         if let Some(mut recorder) = self.audio_recorder.take() {
             let audio_data = recorder.stop_recording();
             let sample_rate = recorder.get_sample_rate();
-            let silence_threshold = recorder.get_silence_threshold();
 
             println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
             println!(
@@ -750,7 +803,7 @@ impl WinhApp {
             }
 
             // Save audio to WAV file
-            match save_audio_to_wav(&audio_data, sample_rate, silence_threshold) {
+            match recorder.save_audio_to_wav(&audio_data, sample_rate) {
                 Ok(path) => {
                     let _duration = audio_data.len() as f32 / sample_rate as f32;
                     self.audio_file_path = Some(path.clone());
