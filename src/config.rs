@@ -17,6 +17,8 @@ pub struct Config {
     pub clipboard_enabled: bool,
     #[serde(default = "default_auto_input_enabled")]
     pub auto_input_enabled: bool,
+    #[serde(default = "default_auto_input_send_enter")]
+    pub auto_input_send_enter: bool,
     #[serde(default = "default_custom_prompt")]
     pub custom_prompt: String,
 }
@@ -31,6 +33,10 @@ fn default_clipboard_enabled() -> bool {
 
 fn default_auto_input_enabled() -> bool {
     true
+}
+
+fn default_auto_input_send_enter() -> bool {
+    false
 }
 
 fn default_custom_prompt() -> String {
@@ -48,6 +54,7 @@ impl Default for Config {
             hotkey: default_hotkey(),
             clipboard_enabled: default_clipboard_enabled(),
             auto_input_enabled: default_auto_input_enabled(),
+            auto_input_send_enter: default_auto_input_send_enter(),
             custom_prompt: default_custom_prompt(),
         }
     }
