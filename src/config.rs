@@ -21,6 +21,8 @@ pub struct Config {
     pub auto_input_send_enter: bool,
     #[serde(default = "default_custom_prompt")]
     pub custom_prompt: String,
+    #[serde(default = "default_vrchat_enabled")]
+    pub vrchat_enabled: bool,
 }
 
 fn default_hotkey() -> String {
@@ -43,6 +45,10 @@ fn default_custom_prompt() -> String {
     "A Japanese is speaking. Transcribe it.".to_string()
 }
 
+fn default_vrchat_enabled() -> bool {
+    false
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -56,6 +62,7 @@ impl Default for Config {
             auto_input_enabled: default_auto_input_enabled(),
             auto_input_send_enter: default_auto_input_send_enter(),
             custom_prompt: default_custom_prompt(),
+            vrchat_enabled: default_vrchat_enabled(),
         }
     }
 }

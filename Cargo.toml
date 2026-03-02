@@ -22,6 +22,7 @@ arboard = "3.3"
 image = { version = "0.24", default-features = false, features = ["png"] }
 global-hotkey = "0.6"
 enigo = "0.6.1"
+rosc = "0.10"
 
 [build-dependencies]
 winres = "0.1"

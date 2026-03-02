@@ -2,6 +2,7 @@ mod audio;
 mod auto_input;
 mod config;
 mod openai;
+mod vrchat;
 
 use audio::AudioRecorder;
 use config::Config;
@@ -238,42 +239,53 @@ impl eframe::App for WinhApp {
                             }
                         }
 
+                        // Conditional VRChat OSC send
+                        if self.config.vrchat_enabled {
+                            let client = vrchat::VRChatClient::new();
+                            match client.send_message(&text) {
+                                Ok(_) => {
+                                    status_parts.push("sent to VRChat");
+                                    println!("Text sent to VRChat via OSC: {}", text);
+                                }
+                                Err(e) => {
+                                    status_parts.push("VRChat send failed");
+                                    eprintln!("VRChat OSC error: {}", e);
+                                }
+                            }
+                        }
+
                         // Conditional auto-input
                         if self.config.auto_input_enabled {
                             // If clipboard is enabled, use Ctrl+V to paste
                             // Otherwise, type the text character-by-character
-                            let result = if self.config.clipboard_enabled {
-                                auto_input::send_ctrl_v()
-                            } else {
-                                auto_input::type_text(&text)
+                            // If send_enter is enabled, use the _with_enter variants
+                            let result = match (self.config.clipboard_enabled, self.config.auto_input_send_enter) {
+                                (true, true) => {
+                                    status_parts.push("auto-input (Ctrl+V + Enter) started");
+                                    println!("Auto-input (Ctrl+V + Enter) started");
+                                    auto_input::send_ctrl_v_with_enter()
+                                }
+                                (true, false) => {
+                                    status_parts.push("auto-input (Ctrl+V) started");
+                                    println!("Auto-input (Ctrl+V) started");
+                                    auto_input::send_ctrl_v()
+                                }
+                                (false, true) => {
+                                    status_parts.push("auto-input (typing + Enter) started");
+                                    println!("Auto-input (typing + Enter) started");
+                                    auto_input::type_text_with_enter(&text)
+                                }
+                                (false, false) => {
+                                    status_parts.push("auto-input (typing) started");
+                                    println!("Auto-input (typing) started");
+                                    auto_input::type_text(&text)
+                                }
                             };
 
-                            match result {
-                                Ok(_) => {
-                                    if self.config.clipboard_enabled {
-                                        status_parts.push("auto-input (Ctrl+V) started");
-                                        println!("Auto-input (Ctrl+V) started");
-                                    } else {
-                                        status_parts.push("auto-input (typing) started");
-                                        println!("Auto-input (typing) started");
-                                    }
-
-                                    // Send Enter if configured
-                                    if self.config.auto_input_send_enter {
-                                        match auto_input::send_enter() {
-                                            Ok(_) => {
-                                                println!("Enter key sent after auto-input");
-                                            }
-                                            Err(e) => {
-                                                eprintln!("Failed to send Enter: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    status_parts.push("auto-input failed");
-                                    eprintln!("Auto-input error: {}", e);
-                                }
+                            if let Err(e) = result {
+                                status_parts.pop(); // Remove the "started" message
+                                status_parts.push("auto-input failed");
+                                eprintln!("Auto-input error: {}", e);
                             }
                         }
 
@@ -684,12 +696,22 @@ impl eframe::App for WinhApp {
                     let auto_input_enter_changed = ui
                         .add_enabled(
                             self.config.auto_input_enabled,
-                            egui::Checkbox::new(&mut self.config.auto_input_send_enter, "Send Enter after input")
+                            egui::Checkbox::new(
+                                &mut self.config.auto_input_send_enter,
+                                "Send Enter after input",
+                            ),
                         )
                         .changed();
+                    let vrchat_changed = ui
+                        .checkbox(&mut self.config.vrchat_enabled, "Send to VRChat")
+                        .changed();
 
-                    // Save config if either checkbox changed
-                    if clipboard_changed || auto_input_changed || auto_input_enter_changed {
+                    // Save config if any checkbox changed
+                    if clipboard_changed
+                        || auto_input_changed
+                        || auto_input_enter_changed
+                        || vrchat_changed
+                    {
                         if let Err(e) = self.config.save() {
                             eprintln!("Failed to save config: {}", e);
                         }

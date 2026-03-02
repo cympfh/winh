@@ -28,12 +28,26 @@ pub fn send_ctrl_v() -> Result<(), String> {
     Ok(())
 }
 
-/// Sends Enter key to the currently focused window
+/// Sends Ctrl+V followed by Enter key
 /// This function is non-blocking and spawns a background thread
-pub fn send_enter() -> Result<(), String> {
+pub fn send_ctrl_v_with_enter() -> Result<(), String> {
     thread::spawn(move || {
-        if let Err(e) = send_enter_sync() {
-            eprintln!("Auto-input (Enter) failed: {}", e);
+        if let Err(e) = send_ctrl_v_with_enter_sync() {
+            eprintln!("Auto-input (Ctrl+V + Enter) failed: {}", e);
+        }
+    });
+
+    Ok(())
+}
+
+/// Types text character-by-character followed by Enter key
+/// This function is non-blocking and spawns a background thread
+pub fn type_text_with_enter(text: &str) -> Result<(), String> {
+    let text_owned = text.to_string();
+
+    thread::spawn(move || {
+        if let Err(e) = type_text_with_enter_sync(&text_owned) {
+            eprintln!("Auto-input (typing + Enter) failed: {}", e);
         }
     });
 
@@ -78,15 +92,35 @@ fn send_ctrl_v_sync() -> Result<(), String> {
     Ok(())
 }
 
-/// Internal synchronous implementation of Enter key
-fn send_enter_sync() -> Result<(), String> {
-    let mut enigo =
-        Enigo::new(&Settings::default()).map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
+/// Internal synchronous implementation of Ctrl+V followed by Enter
+fn send_ctrl_v_with_enter_sync() -> Result<(), String> {
+    // Execute Ctrl+V
+    send_ctrl_v_sync()?;
 
-    // Small delay before pressing Enter
+    // Small delay between Ctrl+V and Enter
     thread::sleep(Duration::from_millis(100));
 
     // Press Enter
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
+    enigo
+        .key(Key::Return, enigo::Direction::Click)
+        .map_err(|e| format!("Failed to press Enter: {:?}", e))?;
+
+    Ok(())
+}
+
+/// Internal synchronous implementation of text typing followed by Enter
+fn type_text_with_enter_sync(text: &str) -> Result<(), String> {
+    // Type the text
+    type_text_sync(text)?;
+
+    // Small delay between typing and Enter
+    thread::sleep(Duration::from_millis(100));
+
+    // Press Enter
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
     enigo
         .key(Key::Return, enigo::Direction::Click)
         .map_err(|e| format!("Failed to press Enter: {:?}", e))?;

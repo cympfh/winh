@@ -58,23 +58,12 @@
     - self.config.clipboard_enabled なら type_text の代わりに Ctrl+V を送信する
         - auto_input に send_ctrl_v() を実装
         - main.rs で clipboard_enabled が true の場合は send_ctrl_v() を呼び出す
-- [ ] Bugfix: 一部マイクが使えない
-    - Case 1:
-    ```
-    Recording started
-    Using input device: マイク (UGREEN Camera Audio)
-    Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
-    Sample rate: 48000Hz, Channels: 2 (using default), Format: F32
-    Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x88890008
-    ```
-    - Case 2:
-    ```
-    Recording started
-    Using input device: CABLE-A Output (VB-Audio Cable A)
-    Mono config not supported (Failed to build input stream: The requested stream configuration is not supported by the device.), falling back to default config
-    Sample rate: 44100Hz, Channels: 2 (using default), Format: F32
-    Failed to start recording: Failed to build input stream: A backend-specific error has occurred: 0x8889000A
-    ```
+- [x] Send to VRChat (2026-03-02)
+    - `rosc` クレート (v0.10) を使用して OSC メッセージを送信
+    - `src/vrchat.rs` に `VRChatClient` を実装
+    - localhost:9091 に `/chatbox/input` OSC メッセージを送信
+    - Config に `vrchat_enabled` フィールドを追加 (デフォルト: OFF)
+    - メイン画面に4つめのチェックボックス "Send to VRChat" を追加
 
 ## v0.1.0 (Released 2025-12-18)
 
