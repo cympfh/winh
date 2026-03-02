@@ -26,7 +26,7 @@ pub struct VRChatClient {
 impl VRChatClient {
     pub fn new() -> Self {
         Self {
-            target_addr: "127.0.0.1:9091".to_string(),
+            target_addr: "127.0.0.1:9000".to_string(),
         }
     }
 
