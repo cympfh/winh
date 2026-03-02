@@ -109,6 +109,9 @@ struct WinhApp {
     // Global hotkey management
     hotkey_manager: GlobalHotKeyManager,
     current_hotkey: HotKey,
+
+    // VRChat mute trigger
+    mute_trigger_receiver: Receiver<()>,
 }
 
 impl WinhApp {
@@ -148,6 +151,10 @@ impl WinhApp {
             println!("Global hotkey registered: {}", config.hotkey);
         }
 
+        // Setup VRChat mute trigger channel and start listener
+        let (mute_trigger_sender, mute_trigger_receiver) = channel::<()>();
+        vrchat::start_mute_listener(mute_trigger_sender.clone());
+
         Self {
             is_recording: false,
             is_preparing: false,
@@ -173,12 +180,22 @@ impl WinhApp {
             last_error: None,
             hotkey_manager,
             current_hotkey,
+            mute_trigger_receiver,
         }
     }
 }
 
 impl eframe::App for WinhApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for VRChat mute trigger
+        if let Ok(()) = self.mute_trigger_receiver.try_recv() {
+            if !self.is_recording && !self.is_transcribing && !self.is_preparing {
+                println!("VRChat mute trigger received → start recording");
+                self.is_recording = true;
+                self.on_actually_start_recording();
+            }
+        }
+
         // Check for global hotkey events
         if let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
             if event.id == self.current_hotkey.id() {

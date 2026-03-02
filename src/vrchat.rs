@@ -1,6 +1,8 @@
+use rosc::decoder;
 use rosc::encoder;
 use rosc::{OscMessage, OscPacket, OscType};
 use std::net::UdpSocket;
+use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub enum VRChatError {
@@ -73,4 +75,65 @@ impl Default for VRChatClient {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// VRChat から OSC (port=9001) で MuteSelf パラメータを受信し、
+/// 1秒以内に False→True と切り替わったら sender に () を送信する
+pub fn start_mute_listener(sender: Sender<()>) {
+    std::thread::spawn(move || {
+        let socket = match UdpSocket::bind("0.0.0.0:9001") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[VRChat OSC Listener] Failed to bind port 9001: {}", e);
+                return;
+            }
+        };
+        socket
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .ok();
+        println!("[VRChat OSC Listener] Listening on port 9001 for MuteSelf parameter");
+
+        let mut buf = [0u8; 65535];
+        // False を受け取った時刻を記録する
+        let mut unmute_time: Option<std::time::Instant> = None;
+
+        loop {
+            match socket.recv_from(&mut buf) {
+                Ok((size, _addr)) => {
+                    if let Ok((_, OscPacket::Message(msg))) = decoder::decode_udp(&buf[..size]) {
+                        if msg.addr == "/avatar/parameters/MuteSelf" {
+                            let is_muted = match msg.args.first() {
+                                Some(OscType::Bool(b)) => *b,
+                                Some(OscType::Int(i)) => *i != 0,
+                                Some(OscType::Float(f)) => *f != 0.0,
+                                _ => continue,
+                            };
+                            println!("[VRChat OSC Listener] MuteSelf={}", is_muted);
+
+                            if !is_muted {
+                                // False (ミュート解除) → 時刻を記録
+                                unmute_time = Some(std::time::Instant::now());
+                            } else if let Some(t) = unmute_time.take() {
+                                // True (ミュート) → 直前の False から 1秒以内なら録音開始
+                                if t.elapsed() <= std::time::Duration::from_secs(1) {
+                                    println!("[VRChat OSC Listener] Mute toggle detected → trigger recording");
+                                    if sender.send(()).is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(e) => {
+                    eprintln!("[VRChat OSC Listener] recv error: {}", e);
+                    break;
+                }
+            }
+        }
+        println!("[VRChat OSC Listener] Stopped");
+    });
 }

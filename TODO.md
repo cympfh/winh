@@ -64,6 +64,17 @@
     - localhost:9091 に `/chatbox/input` OSC メッセージを送信
     - Config に `vrchat_enabled` フィールドを追加 (デフォルト: OFF)
     - メイン画面に4つめのチェックボックス "Send to VRChat" を追加
+- [x] Receive VRChat mute (2026-03-02)
+    - VRChat から OSC (port=9001) でミュート状態を受信できる
+    - 1秒以内に2回切り替わって最終的にミュート状態がONなら録音を開始する
+    - すなわち、
+        - もし1秒以内に
+            (/avatar/parameters/MuteSelf, False) を受け取って
+            (/avatar/parameters/MuteSelf, True) を受け取ったら
+        - "Start" ボタンを自動で押す（録音開始）
+    - `src/vrchat.rs` に `start_mute_listener(sender: Sender<()>)` を実装
+    - アプリ起動時にリスナーを起動、`mute_trigger_receiver` で受信
+    - `update()` でトリガーを検知して `on_actually_start_recording()` を呼び出す
 
 ## v0.1.0 (Released 2025-12-18)
 
