@@ -561,18 +561,20 @@ impl eframe::App for WinhApp {
                 ui.painter()
                     .rect_filled(rect, visuals.rounding, visuals.bg_fill);
 
-                // Draw progress bar if recording (fill from bottom)
-                if self.is_recording && silence_progress > 0.0 {
-                    let progress_height = rect.height() * silence_progress;
-                    let progress_rect = egui::Rect::from_min_size(
-                        egui::pos2(rect.min.x, rect.max.y - progress_height),
-                        egui::vec2(rect.width(), progress_height),
-                    );
-                    ui.painter().rect_filled(
-                        progress_rect,
-                        visuals.rounding,
-                        egui::Color32::from_rgb(100, 200, 255),
-                    );
+                // Draw progress bar if recording (start full, drain as silence progresses)
+                if self.is_recording {
+                    let fill_height = rect.height() * (1.0 - silence_progress);
+                    if fill_height > 0.0 {
+                        let progress_rect = egui::Rect::from_min_size(
+                            egui::pos2(rect.min.x, rect.max.y - fill_height),
+                            egui::vec2(rect.width(), fill_height),
+                        );
+                        ui.painter().rect_filled(
+                            progress_rect,
+                            visuals.rounding,
+                            egui::Color32::from_rgb(100, 200, 255),
+                        );
+                    }
                 }
 
                 // Draw button border

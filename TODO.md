@@ -75,6 +75,9 @@
     - `src/vrchat.rs` に `start_mute_listener(sender: Sender<()>)` を実装
     - アプリ起動時にリスナーを起動、`mute_trigger_receiver` で受信
     - `update()` でトリガーを検知して `on_actually_start_recording()` を呼び出す
+- [x] ボタンを水色に塗るのを逆にして (2026-03-02)
+    - 録音開始時は水色MAX、無音が進むにつれて減っていく（drain）
+    - `fill_height = rect.height() * (1.0 - silence_progress)` に変更
 
 ## v0.1.0 (Released 2025-12-18)
 
