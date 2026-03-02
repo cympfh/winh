@@ -26,7 +26,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([380.0, 430.0])
+            .with_inner_size([380.0, 440.0])
             .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
@@ -276,7 +276,10 @@ impl eframe::App for WinhApp {
                             // If clipboard is enabled, use Ctrl+V to paste
                             // Otherwise, type the text character-by-character
                             // If send_enter is enabled, use the _with_enter variants
-                            let result = match (self.config.clipboard_enabled, self.config.auto_input_send_enter) {
+                            let result = match (
+                                self.config.clipboard_enabled,
+                                self.config.auto_input_send_enter,
+                            ) {
                                 (true, true) => {
                                     status_parts.push("auto-input (Ctrl+V + Enter) started");
                                     println!("Auto-input (Ctrl+V + Enter) started");
@@ -712,6 +715,9 @@ impl eframe::App for WinhApp {
                             "Auto-input to active window",
                         )
                         .changed();
+                    if auto_input_changed && self.config.auto_input_enabled {
+                        self.config.vrchat_enabled = false;
+                    }
                     let auto_input_enter_changed = ui
                         .add_enabled(
                             self.config.auto_input_enabled,
@@ -724,6 +730,9 @@ impl eframe::App for WinhApp {
                     let vrchat_changed = ui
                         .checkbox(&mut self.config.vrchat_enabled, "Send to VRChat")
                         .changed();
+                    if vrchat_changed && self.config.vrchat_enabled {
+                        self.config.auto_input_enabled = false;
+                    }
 
                     // Save config if any checkbox changed
                     if clipboard_changed
