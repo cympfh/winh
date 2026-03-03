@@ -124,8 +124,22 @@ impl OpenAIClient {
             })?;
 
         println!("Transcription result: {}", transcription.text);
-        Ok(transcription.text)
+        let text = remove_punctuation(&transcription.text);
+        println!("After punctuation removal: {}", text);
+        Ok(text)
     }
+}
+
+fn remove_punctuation(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '、' | '。' | ',' | '.' | '!' | '?' => ' ',
+            _ => c,
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -152,5 +166,13 @@ mod tests {
             "".to_string(),
         );
         assert_eq!(client.prompt, None);
+    }
+
+    #[test]
+    fn test_remove_punctuation() {
+        assert_eq!(remove_punctuation("こんにちは、世界。"), "こんにちは 世界");
+        assert_eq!(remove_punctuation("Hello, world!"), "Hello world");
+        assert_eq!(remove_punctuation("Yes? No."), "Yes No");
+        assert_eq!(remove_punctuation("それは、すごいですね！"), "それは すごいですね");
     }
 }

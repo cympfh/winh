@@ -79,6 +79,23 @@
     - 録音開始時は水色MAX、無音が進むにつれて減っていく（drain）
     - `fill_height = rect.height() * (1.0 - silence_progress)` に変更
 
+- [x] 書き起こしから句読点は全て削除する [2026-03-03 11:13 完了]
+    - `transcribe_audio` の最後の最後の処理として追加
+    - Replace all `[、。,.!?]` with a space, then trim (strip) it.
+    - `remove_punctuation()` 関数を `openai.rs` に実装、ユニットテストも追加
+
+- [ ] eliza-agent-server と連携
+    - 設定に eliza agent url を追加
+        - デフォルト http://localhost:9096
+    - チェックボックスに "Send to Eliza Agent" を追加
+        - 併せて window の縦幅を増やす
+    - POST /chat --data '{
+    messages: [{role: "user", content: "書き起こしテキスト"}],
+    use_memory: false,
+    detect_sleep: false
+    }'
+
+
 ## v0.1.0 (Released 2025-12-18)
 
 ### Phase 1: 基本セットアップ ✅ 完了
