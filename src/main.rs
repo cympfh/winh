@@ -117,6 +117,8 @@ struct WinhApp {
     mute_trigger_receiver: Receiver<i32>,
     // eliza モードで録音開始したかどうか
     eliza_mode: bool,
+    // Background eliza response receiver
+    eliza_response_receiver: Option<Receiver<Result<String, String>>>,
 }
 
 impl WinhApp {
@@ -189,12 +191,32 @@ impl WinhApp {
             current_hotkey,
             mute_trigger_receiver,
             eliza_mode: false,
+            eliza_response_receiver: None,
         }
     }
 }
 
 impl eframe::App for WinhApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for eliza response and send to VRChat chatbox
+        if let Some(ref receiver) = self.eliza_response_receiver {
+            if let Ok(result) = receiver.try_recv() {
+                match result {
+                    Ok(response) => {
+                        println!("[Eliza] Response received → send to VRChat: {}", response);
+                        let client = vrchat::VRChatClient::new();
+                        if let Err(e) = client.send_message(&response) {
+                            eprintln!("[Eliza] Failed to send response to VRChat: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[Eliza] Error: {}", e);
+                    }
+                }
+                self.eliza_response_receiver = None;
+            }
+        }
+
         // Check for VRChat mute trigger
         if let Ok(gesture_right) = self.mute_trigger_receiver.try_recv() {
             if !self.is_recording && !self.is_transcribing && !self.is_preparing {
@@ -285,18 +307,18 @@ impl eframe::App for WinhApp {
                             }
                         }
 
-                        // Conditional eliza-agent-server send
+                        // Conditional eliza-agent-server send (background)
                         if self.eliza_mode {
-                            let client = eliza::ElizaClient::new(self.config.eliza_url.clone());
-                            match client.send_chat(&text) {
-                                Ok(_) => {
-                                    status_parts.push("sent to Eliza");
-                                }
-                                Err(e) => {
-                                    status_parts.push("Eliza send failed");
-                                    eprintln!("Eliza error: {}", e);
-                                }
-                            }
+                            let eliza_url = self.config.eliza_url.clone();
+                            let eliza_text = text.clone();
+                            let (eliza_sender, eliza_receiver) =
+                                channel::<Result<String, String>>();
+                            std::thread::spawn(move || {
+                                let client = eliza::ElizaClient::new(eliza_url);
+                                let _ = eliza_sender.send(client.send_chat(&eliza_text));
+                            });
+                            self.eliza_response_receiver = Some(eliza_receiver);
+                            status_parts.push("sent to Eliza");
                         }
                         self.eliza_mode = false;
 
