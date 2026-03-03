@@ -27,7 +27,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([380.0, 440.0])
+            .with_inner_size([380.0, 460.0])
             .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
@@ -561,7 +561,12 @@ impl eframe::App for WinhApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                ui.add_space(10.0);
+
+                // Consistent width for button and text area
+                let ui_width = 300.0;
+                let ui_space = 10.0;
+
+                ui.add_space(ui_space);
 
                 // Header with title and settings button
                 ui.horizontal(|ui| {
@@ -571,27 +576,54 @@ impl eframe::App for WinhApp {
                         }
                     });
                 });
-                ui.add_space(10.0);
+                ui.add_space(ui_space);
 
-                // Status message
-                if !self.status_message.is_empty() {
-                    ui.colored_label(egui::Color32::from_rgb(100, 150, 255), &self.status_message);
+                // Error display area
+                if let Some(error) = &self.last_error {
+                    ui.colored_label(egui::Color32::RED, format!("❌ Error: {}", error));
                 }
 
-                // Preparation message
-                if self.is_preparing {
-                    ui.colored_label(egui::Color32::from_rgb(255, 200, 100), "Preparing...");
+                // Warning if API key is not set
+                if self.config.api_key.is_empty() {
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        "⚠ API key not set. Please configure in Settings.",
+                    );
                 }
 
-                // Recording info (buffer size, sample rate)
-                if !self.recording_info.is_empty() {
-                    ui.label(&self.recording_info);
-                }
+                // Status area (fixed 3-line height)
+                let line_height = ui.text_style_height(&egui::TextStyle::Body);
+                let status_area_height = line_height * 3.0 + ui.spacing().item_spacing.y * 2.0;
+                ui.horizontal(|ui| {
+                    let left_pad = (ui.available_width() - ui_width).max(0.0) / 2.0;
+                    ui.add_space(left_pad);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui_width, status_area_height),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            if !self.status_message.is_empty() {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(100, 150, 255),
+                                    &self.status_message,
+                                );
+                            } else {
+                                ui.label("");
+                            }
+                            if !self.recording_info.is_empty() {
+                                ui.label(&self.recording_info);
+                            } else if self.is_preparing {
+                                ui.colored_label(
+                                    egui::Color32::from_rgb(255, 200, 100),
+                                    "Preparing...",
+                                );
+                            } else {
+                                ui.label("");
+                            }
+                        },
+                    );
+                });
 
                 ui.add_space(20.0);
-
-                // Consistent width for button and text area
-                let ui_width = 300.0;
 
                 // Large Start/Stop button with progress indicator
                 let button_text = if self.is_recording {
@@ -671,7 +703,7 @@ impl eframe::App for WinhApp {
                     }
                 }
 
-                ui.add_space(10.0);
+                ui.add_space(ui_space);
 
                 // Volume indicator bar
                 if self.is_recording {
@@ -729,16 +761,17 @@ impl eframe::App for WinhApp {
                         // Display amplitude value
                         ui.label(format!("Level: {:.3}", max_amplitude));
                     }
+                } else {
+                    ui.add_space(34.0);
                 }
 
-                ui.add_space(20.0);
-
                 // Transcribed text display area (click to copy)
+                let text_height = 80.0;
                 let text_response = egui::ScrollArea::vertical()
-                    .max_height(100.0)
+                    .max_height(text_height)
                     .show(ui, |ui| {
                         let output = ui.add_sized(
-                            egui::vec2(ui_width, 100.0),
+                            egui::vec2(ui_width, text_height),
                             egui::TextEdit::multiline(&mut self.transcribed_text)
                                 .interactive(false),
                         );
@@ -764,68 +797,66 @@ impl eframe::App for WinhApp {
                     }
                 }
 
-                ui.add_space(15.0);
+                ui.add_space(ui_space);
 
                 // Output Options
-                ui.vertical_centered(|ui| {
-                    let clipboard_changed = ui
-                        .checkbox(&mut self.config.clipboard_enabled, "Auto-copy to clipboard")
-                        .changed();
-                    let auto_input_changed = ui
-                        .checkbox(
-                            &mut self.config.auto_input_enabled,
-                            "Auto-input to active window",
-                        )
-                        .changed();
-                    if auto_input_changed && self.config.auto_input_enabled {
-                        self.config.vrchat_enabled = false;
-                    }
-                    let auto_input_enter_changed = ui
-                        .add_enabled(
-                            self.config.auto_input_enabled,
-                            egui::Checkbox::new(
-                                &mut self.config.auto_input_send_enter,
-                                "Send Enter after input",
-                            ),
-                        )
-                        .changed();
-                    let vrchat_changed = ui
-                        .checkbox(&mut self.config.vrchat_enabled, "Send to VRChat")
-                        .changed();
-                    if vrchat_changed && self.config.vrchat_enabled {
-                        self.config.auto_input_enabled = false;
-                    }
-                    let eliza_changed = ui
-                        .checkbox(&mut self.config.eliza_enabled, "Send to Eliza")
-                        .changed();
+                ui.horizontal(|ui| {
+                    let left_pad = (ui.available_width() - ui_width).max(0.0) / 2.0;
+                    ui.add_space(left_pad);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui_width, 200.0),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            let clipboard_changed = ui
+                                .checkbox(
+                                    &mut self.config.clipboard_enabled,
+                                    "Auto-copy to clipboard",
+                                )
+                                .changed();
+                            let auto_input_changed = ui
+                                .checkbox(
+                                    &mut self.config.auto_input_enabled,
+                                    "Auto-input to active window",
+                                )
+                                .changed();
+                            if auto_input_changed && self.config.auto_input_enabled {
+                                self.config.vrchat_enabled = false;
+                            }
+                            let auto_input_enter_changed = ui
+                                .add_enabled(
+                                    self.config.auto_input_enabled,
+                                    egui::Checkbox::new(
+                                        &mut self.config.auto_input_send_enter,
+                                        "Send Enter after input",
+                                    ),
+                                )
+                                .changed();
+                            let vrchat_changed = ui
+                                .checkbox(&mut self.config.vrchat_enabled, "Send to VRChat")
+                                .changed();
+                            if vrchat_changed && self.config.vrchat_enabled {
+                                self.config.auto_input_enabled = false;
+                            }
+                            let eliza_changed = ui
+                                .checkbox(&mut self.config.eliza_enabled, "Send to Eliza")
+                                .changed();
 
-                    // Save config if any checkbox changed
-                    if clipboard_changed
-                        || auto_input_changed
-                        || auto_input_enter_changed
-                        || vrchat_changed
-                        || eliza_changed
-                    {
-                        if let Err(e) = self.config.save() {
-                            eprintln!("Failed to save config: {}", e);
-                        }
-                    }
+                            // Save config if any checkbox changed
+                            if clipboard_changed
+                                || auto_input_changed
+                                || auto_input_enter_changed
+                                || vrchat_changed
+                                || eliza_changed
+                            {
+                                if let Err(e) = self.config.save() {
+                                    eprintln!("Failed to save config: {}", e);
+                                }
+                            }
+                        },
+                    );
                 });
 
-                ui.add_space(10.0);
-
-                // Error display area
-                if let Some(error) = &self.last_error {
-                    ui.colored_label(egui::Color32::RED, format!("❌ Error: {}", error));
-                }
-
-                // Warning if API key is not set
-                if self.config.api_key.is_empty() {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(255, 165, 0),
-                        "⚠ API key not set. Please configure in Settings.",
-                    );
-                }
+                ui.add_space(ui_space);
             });
         });
 

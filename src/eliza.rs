@@ -61,7 +61,10 @@ impl ElizaClient {
         let body: ChatResponse = serde_json::from_str(&raw)
             .map_err(|e| format!("Failed to parse eliza response: {}. Body was: {}", e, raw))?;
 
-        println!("[ElizaClient] Response from {}: {}", endpoint, body.message.content);
+        println!(
+            "[ElizaClient] Response from {}: {}",
+            endpoint, body.message.content
+        );
         Ok(body.message.content)
     }
 }

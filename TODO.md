@@ -93,6 +93,12 @@
     - POST /chat --data '{messages: [{role: "user", content: "..."}], use_memory: false, detect_sleep: false}'
     - eliza_enabled チェックかつ eliza モード録音のときのみ送信（fire-and-forget）
 
+- [x] GUI を洗練する [2026-03-03 完了]
+    - ものの高さを固定する
+        - status_message のboxの高さがtext長さで変わるので、常に同じ高さになるようにする
+        - `allocate_ui` で3行分の高さを確保、空行は `ui.label("")` で埋める
+    - チェックボックスが align:center になってるからチェックボックスが綺麗に縦に並んでない
+        - `ui.vertical_centered` の内部に `ui.with_layout(Layout::top_down(Align::LEFT), ...)` で左揃えに配置
 
 ## v0.1.0 (Released 2025-12-18)
 

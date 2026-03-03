@@ -411,7 +411,7 @@ impl AudioRecorder {
         let trimmed_data = trim_leading_silence(audio_data, self.silence_threshold, keep_samples);
 
         if trimmed_data.is_empty() {
-            return Err("Audio data is empty after trimming".to_string());
+            return Err("Audio data is empty (trimmed)".to_string());
         }
 
         // Create a temporary file
