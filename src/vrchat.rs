@@ -78,8 +78,8 @@ impl Default for VRChatClient {
 }
 
 /// VRChat から OSC (port=9001) で MuteSelf パラメータを受信し、
-/// 1秒以内に False→True と切り替わったら sender に () を送信する
-pub fn start_mute_listener(sender: Sender<()>) {
+/// 1秒以内に False→True と切り替わったら sender に GestureRight の値を送信する
+pub fn start_mute_listener(sender: Sender<i32>) {
     std::thread::spawn(move || {
         let socket = match UdpSocket::bind("0.0.0.0:9001") {
             Ok(s) => s,
@@ -91,17 +91,28 @@ pub fn start_mute_listener(sender: Sender<()>) {
         socket
             .set_read_timeout(Some(std::time::Duration::from_millis(500)))
             .ok();
-        println!("[VRChat OSC Listener] Listening on port 9001 for MuteSelf parameter");
+        println!(
+            "[VRChat OSC Listener] Listening on port 9001 for MuteSelf/GestureRight parameters"
+        );
 
         let mut buf = [0u8; 65535];
         // False を受け取った時刻を記録する
         let mut unmute_time: Option<std::time::Instant> = None;
+        // GestureRight の現在値
+        let mut gesture_right: i32 = 0;
 
         loop {
             match socket.recv_from(&mut buf) {
                 Ok((size, _addr)) => {
                     if let Ok((_, OscPacket::Message(msg))) = decoder::decode_udp(&buf[..size]) {
-                        if msg.addr == "/avatar/parameters/MuteSelf" {
+                        if msg.addr == "/avatar/parameters/GestureRight" {
+                            gesture_right = match msg.args.first() {
+                                Some(OscType::Int(i)) => *i,
+                                Some(OscType::Float(f)) => *f as i32,
+                                _ => gesture_right,
+                            };
+                            println!("[VRChat OSC Listener] GestureRight={}", gesture_right);
+                        } else if msg.addr == "/avatar/parameters/MuteSelf" {
                             let is_muted = match msg.args.first() {
                                 Some(OscType::Bool(b)) => *b,
                                 Some(OscType::Int(i)) => *i != 0,
@@ -116,8 +127,11 @@ pub fn start_mute_listener(sender: Sender<()>) {
                             } else if let Some(t) = unmute_time.take() {
                                 // True (ミュート) → 直前の False から 1秒以内なら録音開始
                                 if t.elapsed() <= std::time::Duration::from_secs(1) {
-                                    println!("[VRChat OSC Listener] Mute toggle detected → trigger recording");
-                                    if sender.send(()).is_err() {
+                                    println!(
+                                        "[VRChat OSC Listener] Mute toggle detected → trigger recording (gesture_right={})",
+                                        gesture_right
+                                    );
+                                    if sender.send(gesture_right).is_err() {
                                         break;
                                     }
                                 }

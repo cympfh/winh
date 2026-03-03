@@ -84,16 +84,14 @@
     - Replace all `[、。,.!?]` with a space, then trim (strip) it.
     - `remove_punctuation()` 関数を `openai.rs` に実装、ユニットテストも追加
 
-- [ ] eliza-agent-server と連携
-    - 設定に eliza agent url を追加
-        - デフォルト http://localhost:9096
-    - チェックボックスに "Send to Eliza Agent" を追加
-        - 併せて window の縦幅を増やす
-    - POST /chat --data '{
-    messages: [{role: "user", content: "書き起こしテキスト"}],
-    use_memory: false,
-    detect_sleep: false
-    }'
+- [x] eliza-agent-server と連携 [2026-03-03 11:54 完了]
+    - 設定に eliza agent url を追加（デフォルト http://localhost:9096）
+    - 設定に eliza_gesture を追加（デフォルト 7 = ThumbsUp、スライダーで 0-7 選択可）
+    - チェックボックスに "Send to Eliza" を追加
+    - VRChat OSC: GestureRight の値を監視し、mute トリガー時に eliza_gesture と一致すれば eliza モードで録音
+    - `src/eliza.rs` に `ElizaClient` を実装
+    - POST /chat --data '{messages: [{role: "user", content: "..."}], use_memory: false, detect_sleep: false}'
+    - eliza_enabled チェックかつ eliza モード録音のときのみ送信（fire-and-forget）
 
 
 ## v0.1.0 (Released 2025-12-18)

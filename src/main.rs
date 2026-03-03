@@ -1,6 +1,7 @@
 mod audio;
 mod auto_input;
 mod config;
+mod eliza;
 mod openai;
 mod vrchat;
 
@@ -98,6 +99,8 @@ struct WinhApp {
     settings_input_device: Option<String>,
     settings_hotkey: String,
     settings_custom_prompt: String,
+    settings_eliza_url: String,
+    settings_eliza_gesture: i32,
 
     // Device management
     available_devices: Vec<String>,
@@ -110,8 +113,10 @@ struct WinhApp {
     hotkey_manager: GlobalHotKeyManager,
     current_hotkey: HotKey,
 
-    // VRChat mute trigger
-    mute_trigger_receiver: Receiver<()>,
+    // VRChat mute trigger (i32 = GestureRight value at trigger time)
+    mute_trigger_receiver: Receiver<i32>,
+    // eliza モードで録音開始したかどうか
+    eliza_mode: bool,
 }
 
 impl WinhApp {
@@ -152,7 +157,7 @@ impl WinhApp {
         }
 
         // Setup VRChat mute trigger channel and start listener
-        let (mute_trigger_sender, mute_trigger_receiver) = channel::<()>();
+        let (mute_trigger_sender, mute_trigger_receiver) = channel::<i32>();
         vrchat::start_mute_listener(mute_trigger_sender.clone());
 
         Self {
@@ -171,6 +176,8 @@ impl WinhApp {
             settings_input_device: config.input_device_name.clone(),
             settings_hotkey: config.hotkey.clone(),
             settings_custom_prompt: config.custom_prompt.clone(),
+            settings_eliza_url: config.eliza_url.clone(),
+            settings_eliza_gesture: config.eliza_gesture,
             available_devices,
             selected_device_index,
             config,
@@ -181,6 +188,7 @@ impl WinhApp {
             hotkey_manager,
             current_hotkey,
             mute_trigger_receiver,
+            eliza_mode: false,
         }
     }
 }
@@ -188,9 +196,15 @@ impl WinhApp {
 impl eframe::App for WinhApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for VRChat mute trigger
-        if let Ok(()) = self.mute_trigger_receiver.try_recv() {
+        if let Ok(gesture_right) = self.mute_trigger_receiver.try_recv() {
             if !self.is_recording && !self.is_transcribing && !self.is_preparing {
-                println!("VRChat mute trigger received → start recording");
+                let eliza_mode =
+                    self.config.eliza_enabled && gesture_right == self.config.eliza_gesture;
+                println!(
+                    "VRChat mute trigger received → start recording (gesture_right={}, eliza_mode={})",
+                    gesture_right, eliza_mode
+                );
+                self.eliza_mode = eliza_mode;
                 self.is_recording = true;
                 self.on_actually_start_recording();
             }
@@ -270,6 +284,21 @@ impl eframe::App for WinhApp {
                                 }
                             }
                         }
+
+                        // Conditional eliza-agent-server send
+                        if self.eliza_mode {
+                            let client = eliza::ElizaClient::new(self.config.eliza_url.clone());
+                            match client.send_chat(&text) {
+                                Ok(_) => {
+                                    status_parts.push("sent to Eliza");
+                                }
+                                Err(e) => {
+                                    status_parts.push("Eliza send failed");
+                                    eprintln!("Eliza error: {}", e);
+                                }
+                            }
+                        }
+                        self.eliza_mode = false;
 
                         // Conditional auto-input
                         if self.config.auto_input_enabled {
@@ -404,6 +433,15 @@ impl eframe::App for WinhApp {
                                     self.settings_custom_prompt = Config::get_default_prompt();
                                 }
                             });
+
+                            ui.add_space(10.0);
+                            ui.label("Eliza Agent URL:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.settings_eliza_url)
+                                    .desired_width(f32::INFINITY),
+                            );
+                            ui.label("Eliza Gesture (GestureRight value to trigger Eliza mode):");
+                            ui.add(egui::Slider::new(&mut self.settings_eliza_gesture, 0..=7));
                         });
 
                     ui.add_space(10.0);
@@ -418,6 +456,8 @@ impl eframe::App for WinhApp {
                                 .get(self.selected_device_index)
                                 .cloned();
                             self.config.custom_prompt = self.settings_custom_prompt.clone();
+                            self.config.eliza_url = self.settings_eliza_url.trim().to_string();
+                            self.config.eliza_gesture = self.settings_eliza_gesture;
 
                             // Handle hotkey change
                             let new_hotkey_str = self.settings_hotkey.trim().to_string();
@@ -733,12 +773,16 @@ impl eframe::App for WinhApp {
                     if vrchat_changed && self.config.vrchat_enabled {
                         self.config.auto_input_enabled = false;
                     }
+                    let eliza_changed = ui
+                        .checkbox(&mut self.config.eliza_enabled, "Send to Eliza")
+                        .changed();
 
                     // Save config if any checkbox changed
                     if clipboard_changed
                         || auto_input_changed
                         || auto_input_enter_changed
                         || vrchat_changed
+                        || eliza_changed
                     {
                         if let Err(e) = self.config.save() {
                             eprintln!("Failed to save config: {}", e);
