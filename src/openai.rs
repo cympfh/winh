@@ -173,6 +173,9 @@ mod tests {
         assert_eq!(remove_punctuation("こんにちは、世界。"), "こんにちは 世界");
         assert_eq!(remove_punctuation("Hello, world!"), "Hello world");
         assert_eq!(remove_punctuation("Yes? No."), "Yes No");
-        assert_eq!(remove_punctuation("それは、すごいですね！"), "それは すごいですね");
+        assert_eq!(
+            remove_punctuation("それは、すごいですね！"),
+            "それは すごいですね"
+        );
     }
 }
