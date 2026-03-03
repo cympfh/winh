@@ -561,7 +561,6 @@ impl eframe::App for WinhApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-
                 // Consistent width for button and text area
                 let ui_width = 300.0;
                 let ui_space = 10.0;
@@ -767,18 +766,19 @@ impl eframe::App for WinhApp {
 
                 // Transcribed text display area (click to copy)
                 let text_height = 80.0;
-                let text_response = egui::ScrollArea::vertical()
-                    .max_height(text_height)
-                    .show(ui, |ui| {
-                        let output = ui.add_sized(
-                            egui::vec2(ui_width, text_height),
-                            egui::TextEdit::multiline(&mut self.transcribed_text)
-                                .interactive(false),
-                        );
-                        // Add click sense on top of the text area
-                        let rect = output.rect;
-                        ui.allocate_rect(rect, egui::Sense::click())
-                    });
+                let text_response =
+                    egui::ScrollArea::vertical()
+                        .max_height(text_height)
+                        .show(ui, |ui| {
+                            let output = ui.add_sized(
+                                egui::vec2(ui_width, text_height),
+                                egui::TextEdit::multiline(&mut self.transcribed_text)
+                                    .interactive(false),
+                            );
+                            // Add click sense on top of the text area
+                            let rect = output.rect;
+                            ui.allocate_rect(rect, egui::Sense::click())
+                        });
 
                 // Copy to clipboard when clicked
                 if text_response.inner.clicked() && !self.transcribed_text.is_empty() {
