@@ -44,7 +44,10 @@ impl ElizaClient {
             detect_sleep: false,
         };
 
-        let client = reqwest::blocking::Client::new();
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .unwrap_or_default();
         let endpoint = format!("{}/chat", self.url.trim_end_matches('/'));
 
         let response = client
