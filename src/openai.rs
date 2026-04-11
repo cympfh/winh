@@ -133,7 +133,7 @@ impl OpenAIClient {
 fn remove_punctuation(text: &str) -> String {
     text.chars()
         .map(|c| match c {
-            '、' | '。' | ',' | '.' | '!' | '?' => ' ',
+            '、' | '。' | '，' | '．' | '！' | '？' | ',' | '.' | '!' | '?' => ' ',
             _ => c,
         })
         .collect::<String>()
