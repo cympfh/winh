@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-22
+
+### Added
+- x.ai STT API による音声書き起こし対応
+- xAI API Key の設定項目を追加（設定画面の先頭に配置）
+
+### Changed
+- 音声書き起こしバックエンドを OpenAI Whisper から x.ai STT API に完全移行
+- `src/openai.rs` を `src/text_to_speech.rs` にリネーム（`TextToSpeechClient` クラス）
+- CLI 引数を `--api-key=` / `OPENAI_API_KEY=` から `--xai-api-key=` / `XAI_API_KEY=` に変更
+
+### Removed
+- OpenAI API Key、Model、Custom Prompt の設定項目を削除
+- `src/openai.rs` および `OpenAIClient` クラスを削除
+
+(git commit: 7169ed5)
+
 ## [0.2.1] - 2026-04-11
 
 ### Fixed
