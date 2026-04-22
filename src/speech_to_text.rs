@@ -29,11 +29,11 @@ impl std::fmt::Display for SttError {
 
 impl std::error::Error for SttError {}
 
-pub struct TextToSpeechClient {
+pub struct SpeechToTextClient {
     api_key: String,
 }
 
-impl TextToSpeechClient {
+impl SpeechToTextClient {
     pub fn new(api_key: String) -> Self {
         Self { api_key }
     }

@@ -2,7 +2,7 @@ mod audio;
 mod auto_input;
 mod config;
 mod eliza;
-mod text_to_speech;
+mod speech_to_text;
 mod vrchat;
 
 use audio::AudioRecorder;
@@ -12,7 +12,7 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
-use text_to_speech::TextToSpeechClient;
+use speech_to_text::SpeechToTextClient;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
@@ -986,7 +986,7 @@ impl WinhApp {
             // Send InProgress message
             let _ = sender.send(TranscriptionMessage::InProgress);
 
-            let client = TextToSpeechClient::new(xai_api_key);
+            let client = SpeechToTextClient::new(xai_api_key);
             match client.transcribe_audio(&audio_path) {
                 Ok(text) => {
                     let _ = sender.send(TranscriptionMessage::Success(text));

@@ -107,7 +107,7 @@ src/
 ├── main.rs              # Main application, GUI, state management
 ├── audio.rs             # Audio recording, silence detection, WAV export
 ├── config.rs            # Configuration management (JSON persistence)
-├── text_to_speech.rs    # x.ai STT API client (TextToSpeechClient)
+├── speech_to_text.rs    # x.ai STT API client (SpeechToTextClient)
 └── icon.png             # Application icon (embedded)
 
 fonts/
@@ -138,7 +138,7 @@ fonts/
    - 16-bit PCM, mono, variable sample rate
    - Temporary file management with `tempfile`
 
-4. **API Integration** (text_to_speech.rs)
+4. **API Integration** (speech_to_text.rs)
    - Blocking HTTP client using `reqwest`
    - Multipart form upload for audio files (`file` must be last field per x.ai spec)
    - Error handling and response parsing
