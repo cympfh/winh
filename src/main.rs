@@ -2,7 +2,7 @@ mod audio;
 mod auto_input;
 mod config;
 mod eliza;
-mod openai;
+mod text_to_speech;
 mod vrchat;
 
 use audio::AudioRecorder;
@@ -12,7 +12,7 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
-use openai::OpenAIClient;
+use text_to_speech::TextToSpeechClient;
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
 
@@ -92,13 +92,11 @@ struct WinhApp {
 
     // Settings UI
     show_settings: bool,
-    settings_api_key: String,
-    settings_model: String,
+    settings_xai_api_key: String,
     settings_silence_duration: f32,
     settings_silence_threshold: f32,
     settings_input_device: Option<String>,
     settings_hotkey: String,
-    settings_custom_prompt: String,
     settings_eliza_url: String,
     settings_eliza_gesture: i32,
 
@@ -171,13 +169,11 @@ impl WinhApp {
             status_message: String::new(),
             recording_info: String::new(),
             audio_file_path: None,
-            settings_api_key: config.api_key.clone(),
-            settings_model: config.model.clone(),
+            settings_xai_api_key: config.xai_api_key.clone(),
             settings_silence_duration: config.silence_duration_secs,
             settings_silence_threshold: config.silence_threshold,
             settings_input_device: config.input_device_name.clone(),
             settings_hotkey: config.hotkey.clone(),
-            settings_custom_prompt: config.custom_prompt.clone(),
             settings_eliza_url: config.eliza_url.clone(),
             settings_eliza_gesture: config.eliza_gesture,
             available_devices,
@@ -391,12 +387,12 @@ impl eframe::App for WinhApp {
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
                         .show(ui, |ui| {
-                            ui.label("OpenAI API Key:");
-                            ui.text_edit_singleline(&mut self.settings_api_key);
-                            ui.add_space(10.0);
-
-                            ui.label("Model:");
-                            ui.text_edit_singleline(&mut self.settings_model);
+                            ui.label("xAI API Key:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.settings_xai_api_key)
+                                    .password(true)
+                                    .desired_width(f32::INFINITY),
+                            );
                             ui.add_space(10.0);
 
                             ui.label("Silence Duration (seconds):");
@@ -443,20 +439,6 @@ impl eframe::App for WinhApp {
                             ui.text_edit_singleline(&mut self.settings_hotkey);
                             ui.add_space(10.0);
 
-                            ui.label("Custom Prompt:");
-                            ui.label("(Leave empty to send no prompt)");
-                            ui.add(
-                                egui::TextEdit::multiline(&mut self.settings_custom_prompt)
-                                    .desired_rows(3)
-                                    .desired_width(f32::INFINITY),
-                            );
-                            ui.horizontal(|ui| {
-                                if ui.button("Reset Prompt to Default").clicked() {
-                                    self.settings_custom_prompt = Config::get_default_prompt();
-                                }
-                            });
-
-                            ui.add_space(10.0);
                             ui.label("Eliza Agent URL:");
                             ui.add(
                                 egui::TextEdit::singleline(&mut self.settings_eliza_url)
@@ -469,15 +451,14 @@ impl eframe::App for WinhApp {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {
-                            self.config.api_key = self.settings_api_key.trim().to_string();
-                            self.config.model = self.settings_model.trim().to_string();
+                            self.config.xai_api_key =
+                                self.settings_xai_api_key.trim().to_string();
                             self.config.silence_duration_secs = self.settings_silence_duration;
                             self.config.silence_threshold = self.settings_silence_threshold;
                             self.config.input_device_name = self
                                 .available_devices
                                 .get(self.selected_device_index)
                                 .cloned();
-                            self.config.custom_prompt = self.settings_custom_prompt.clone();
                             self.config.eliza_url = self.settings_eliza_url.trim().to_string();
                             self.config.eliza_gesture = self.settings_eliza_gesture;
 
@@ -536,13 +517,11 @@ impl eframe::App for WinhApp {
 
                         if ui.button("Cancel").clicked() {
                             // Revert to current config
-                            self.settings_api_key = self.config.api_key.clone();
-                            self.settings_model = self.config.model.clone();
+                            self.settings_xai_api_key = self.config.xai_api_key.clone();
                             self.settings_silence_duration = self.config.silence_duration_secs;
                             self.settings_silence_threshold = self.config.silence_threshold;
                             self.settings_input_device = self.config.input_device_name.clone();
                             self.settings_hotkey = self.config.hotkey.clone();
-                            self.settings_custom_prompt = self.config.custom_prompt.clone();
                             // Restore device index
                             self.selected_device_index =
                                 if let Some(ref device_name) = self.config.input_device_name {
@@ -583,10 +562,10 @@ impl eframe::App for WinhApp {
                 }
 
                 // Warning if API key is not set
-                if self.config.api_key.is_empty() {
+                if self.config.xai_api_key.is_empty() {
                     ui.colored_label(
                         egui::Color32::RED,
-                        "⚠ API key not set. Please configure in Settings.",
+                        "⚠ xAI API key not set. Please configure in Settings.",
                     );
                 }
 
@@ -973,9 +952,9 @@ impl WinhApp {
                     println!("Audio file saved: {:?}", path);
 
                     // Check if API key is set
-                    if self.config.api_key.is_empty() {
+                    if self.config.xai_api_key.is_empty() {
                         self.status_message =
-                            "Audio saved. Set API key in Settings to enable transcription."
+                            "Audio saved. Set xAI API key in Settings to enable transcription."
                                 .to_string();
                     } else {
                         // Start transcription in background thread
@@ -1000,17 +979,14 @@ impl WinhApp {
         self.transcription_receiver = Some(receiver);
         self.is_transcribing = true;
 
-        let api_key = self.config.api_key.clone();
-        let model = self.config.model.clone();
-        let custom_prompt = self.config.custom_prompt.clone();
+        let xai_api_key = self.config.xai_api_key.clone();
 
         // Spawn background thread for transcription
         std::thread::spawn(move || {
             // Send InProgress message
             let _ = sender.send(TranscriptionMessage::InProgress);
 
-            let client = OpenAIClient::new(api_key, model, custom_prompt);
-
+            let client = TextToSpeechClient::new(xai_api_key);
             match client.transcribe_audio(&audio_path) {
                 Ok(text) => {
                     let _ = sender.send(TranscriptionMessage::Success(text));

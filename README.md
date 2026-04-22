@@ -5,7 +5,7 @@ Windows 11向けの音声入力・文字起こしGUIアプリケーション
 ## 概要
 
 winh は音声入力を簡単に文字起こしできるシンプルなデスクトップアプリケーションです。
-OpenAI Whisper API を使用して高精度な音声認識を提供します。
+x.ai の音声認識 API を使用して高精度な音声認識を提供します。
 
 <p align="center">
   <img src="./resources/img/winh0.png" width="30%" />
@@ -36,12 +36,11 @@ OpenAI Whisper API を使用して高精度な音声認識を提供します。
 ### 初回起動時の設定
 
 1. ダウンロード後 `winh.exe` を実行
-2. 「⚠ API key not set」の警告が表示されます
+2. 「⚠ xAI API key not set」の警告が表示されます
 3. 右上の「⚙ Settings」ボタンをクリック
-4. **OpenAI API Key** を入力（必須）
-  - OpenAI のアカウントから取得: https://platform.openai.com/api-keys
+4. **xAI API Key** を入力（必須）
+  - xAI のアカウントから取得: https://console.x.ai/
 5. その他の設定（オプション）:
-  - **Model**: 使用するモデル（デフォルト: `gpt-4o-transcribe`）
   - **Silence Duration (seconds)**: 無音検出の秒数（デフォルト: 1.3秒）
   - **Silence Threshold**: 無音判定のしきい値
     - 小さくすると感度が高くなり、小さい音でも検出します
@@ -64,7 +63,7 @@ OpenAI Whisper API を使用して高精度な音声認識を提供します。
 3. **録音停止**: 以下のいずれかで停止
    - 設定した秒数（デフォルト1.3秒）の無音で自動停止
    - 手動で「⏹ Stop」ボタンをクリック
-4. **文字起こし**: 録音停止後、自動的にWhisper APIに送信
+4. **文字起こし**: 録音停止後、自動的に x.ai STT API に送信
    - 状態メッセージに「Transcribing audio...」と表示
    - 完了すると「Transcription completed!」と表示
 5. **結果**:

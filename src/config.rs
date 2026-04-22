@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub api_key: String,
-    pub model: String,
+    #[serde(default)]
+    pub xai_api_key: String,
     pub silence_duration_secs: f32,
     pub silence_threshold: f32,
     #[serde(default)]
@@ -19,8 +19,6 @@ pub struct Config {
     pub auto_input_enabled: bool,
     #[serde(default = "default_auto_input_send_enter")]
     pub auto_input_send_enter: bool,
-    #[serde(default = "default_custom_prompt")]
-    pub custom_prompt: String,
     #[serde(default = "default_vrchat_enabled")]
     pub vrchat_enabled: bool,
     #[serde(default = "default_eliza_enabled")]
@@ -47,10 +45,6 @@ fn default_auto_input_send_enter() -> bool {
     false
 }
 
-fn default_custom_prompt() -> String {
-    "A Japanese is speaking. Transcribe it.".to_string()
-}
-
 fn default_vrchat_enabled() -> bool {
     false
 }
@@ -70,8 +64,7 @@ fn default_eliza_gesture() -> i32 {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            api_key: String::new(),
-            model: "gpt-4o-transcribe".to_string(),
+            xai_api_key: String::new(),
             silence_duration_secs: 2.0,
             silence_threshold: 0.01,
             input_device_name: None,
@@ -79,7 +72,6 @@ impl Default for Config {
             clipboard_enabled: default_clipboard_enabled(),
             auto_input_enabled: default_auto_input_enabled(),
             auto_input_send_enter: default_auto_input_send_enter(),
-            custom_prompt: default_custom_prompt(),
             vrchat_enabled: default_vrchat_enabled(),
             eliza_enabled: default_eliza_enabled(),
             eliza_url: default_eliza_url(),
@@ -89,11 +81,6 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Get the default prompt
-    pub fn get_default_prompt() -> String {
-        default_custom_prompt()
-    }
-
     /// Parse hotkey string into HotKey
     /// Format: "Ctrl+Shift+R", "Alt+S", "Ctrl+Alt+T", etc.
     pub fn parse_hotkey(&self) -> Result<HotKey, String> {
@@ -233,12 +220,12 @@ impl Config {
     /// Apply command line arguments
     pub fn apply_args(&mut self, args: &[String]) {
         for arg in args {
-            if let Some(key) = arg.strip_prefix("--api-key=") {
-                self.api_key = key.to_string();
-                println!("API key set from command line");
-            } else if let Some(key) = arg.strip_prefix("OPENAI_API_KEY=") {
-                self.api_key = key.to_string();
-                println!("API key set from command line (OPENAI_API_KEY=...)");
+            if let Some(key) = arg.strip_prefix("--xai-api-key=") {
+                self.xai_api_key = key.to_string();
+                println!("xAI API key set from command line");
+            } else if let Some(key) = arg.strip_prefix("XAI_API_KEY=") {
+                self.xai_api_key = key.to_string();
+                println!("xAI API key set from command line (XAI_API_KEY=...)");
             }
         }
     }
@@ -251,7 +238,6 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.model, "gpt-4o-transcribe");
         assert_eq!(config.silence_duration_secs, 2.0);
         assert_eq!(config.silence_threshold, 0.01);
     }

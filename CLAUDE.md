@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**winh** is a Windows 11 voice transcription GUI application written in Rust. It provides a single-window interface with a start/stop button that captures audio input, automatically detects silence, and transcribes speech to text using OpenAI's Whisper API. The transcribed text is displayed in the GUI and copied to the clipboard.
+**winh** is a Windows 11 voice transcription GUI application written in Rust. It provides a single-window interface with a start/stop button that captures audio input, automatically detects silence, and transcribes speech to text using x.ai's STT API. The transcribed text is displayed in the GUI and copied to the clipboard.
 
 ### Key Features (Implemented)
 - Single executable file (~30MB, no installer required)
@@ -20,10 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Visual feedback:
   - Silence progress indicator (cyan fill on Stop button)
   - Real-time volume level indicator (gray/green/red bar)
-- Audio saved temporarily as WAV and sent to OpenAI for transcription
+- Audio saved temporarily as WAV and sent to x.ai STT API for transcription
 - Settings modal with scrollable content:
-  - API key management
-  - Model selection (default: gpt-4o-transcribe)
+  - xAI API key management
   - Silence duration (0.5-10.0 seconds)
   - Silence threshold (0.001-0.3, logarithmic scale)
   - Input device selection
@@ -105,11 +104,11 @@ v0.1.0 released (2025-12-18). v0.2.0 is in progress with additional features. Se
 ### Project Structure
 ```
 src/
-├── main.rs         # Main application, GUI, state management
-├── audio.rs        # Audio recording, silence detection, WAV export
-├── config.rs       # Configuration management (JSON persistence)
-├── openai.rs       # OpenAI Whisper API client
-└── icon.png        # Application icon (embedded)
+├── main.rs              # Main application, GUI, state management
+├── audio.rs             # Audio recording, silence detection, WAV export
+├── config.rs            # Configuration management (JSON persistence)
+├── text_to_speech.rs    # x.ai STT API client (TextToSpeechClient)
+└── icon.png             # Application icon (embedded)
 
 fonts/
 └── NotoSansJP-Regular.ttf  # Japanese font (embedded)
@@ -139,11 +138,11 @@ fonts/
    - 16-bit PCM, mono, variable sample rate
    - Temporary file management with `tempfile`
 
-4. **API Integration** (openai.rs)
+4. **API Integration** (text_to_speech.rs)
    - Blocking HTTP client using `reqwest`
-   - Multipart form upload for audio files
+   - Multipart form upload for audio files (`file` must be last field per x.ai spec)
    - Error handling and response parsing
-   - Configurable model selection
+   - x.ai STT endpoint: `https://api.x.ai/v1/stt`
 
 5. **Clipboard Management** (main.rs)
    - Automatic clipboard copy on transcription success
