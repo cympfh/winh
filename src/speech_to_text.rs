@@ -1,18 +1,24 @@
-use serde::{Deserialize, Serialize};
-use std::path::Path;
+use crate::TranscriptionMessage;
+use futures_util::{SinkExt, StreamExt};
+use serde::Deserialize;
+use tokio::sync::mpsc;
+use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest, tungstenite::Message};
 
-const XAI_STT_URL: &str = "https://api.x.ai/v1/stt";
+const XAI_STT_WS_URL: &str = "wss://api.x.ai/v1/stt";
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TranscriptionResponse {
-    pub text: String,
+#[derive(Debug, Deserialize)]
+struct WsEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    text: Option<String>,
+    speech_final: Option<bool>,
+    message: Option<String>,
 }
 
 #[derive(Debug)]
 pub enum SttError {
     NetworkError(String),
     ApiError(String),
-    FileError(String),
     ParseError(String),
 }
 
@@ -21,7 +27,6 @@ impl std::fmt::Display for SttError {
         match self {
             SttError::NetworkError(msg) => write!(f, "Network error: {}", msg),
             SttError::ApiError(msg) => write!(f, "API error: {}", msg),
-            SttError::FileError(msg) => write!(f, "File error: {}", msg),
             SttError::ParseError(msg) => write!(f, "Parse error: {}", msg),
         }
     }
@@ -38,70 +43,151 @@ impl SpeechToTextClient {
         Self { api_key }
     }
 
-    pub fn transcribe_audio(&self, audio_file_path: &Path) -> Result<String, SttError> {
-        if !audio_file_path.exists() {
-            return Err(SttError::FileError(format!(
-                "Audio file not found: {:?}",
-                audio_file_path
-            )));
+    pub async fn stream_transcribe(
+        &self,
+        sample_rate: u32,
+        mut audio_rx: mpsc::UnboundedReceiver<Vec<f32>>,
+        result_tx: mpsc::UnboundedSender<TranscriptionMessage>,
+    ) -> Result<(), SttError> {
+        let url = format!(
+            "{}?sample_rate={}&encoding=pcm&interim_results=true&language=ja&endpointing=5000",
+            XAI_STT_WS_URL, sample_rate
+        );
+
+        println!("Connecting to WebSocket STT: {}", url);
+
+        let mut request = url
+            .into_client_request()
+            .map_err(|e| SttError::NetworkError(e.to_string()))?;
+        request.headers_mut().insert(
+            "Authorization",
+            format!("Bearer {}", self.api_key)
+                .parse()
+                .map_err(|e: reqwest::header::InvalidHeaderValue| {
+                    SttError::NetworkError(e.to_string())
+                })?,
+        );
+
+        let (ws_stream, _) = connect_async(request)
+            .await
+            .map_err(|e| SttError::NetworkError(format!("WebSocket connect failed: {}", e)))?;
+
+        let (mut ws_sink, mut ws_read) = ws_stream.split();
+
+        // transcript.created を待つ
+        loop {
+            match ws_read.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    let event: WsEvent = serde_json::from_str(&text)
+                        .map_err(|e| SttError::ParseError(e.to_string()))?;
+                    if event.event_type == "transcript.created" {
+                        println!("WebSocket STT server ready");
+                        break;
+                    }
+                    if event.event_type == "error" {
+                        let msg = event.message.unwrap_or("Connection error".to_string());
+                        return Err(SttError::ApiError(msg));
+                    }
+                }
+                Some(Err(e)) => {
+                    return Err(SttError::NetworkError(format!("WS recv error: {}", e)));
+                }
+                None => {
+                    return Err(SttError::NetworkError("Connection closed before ready".to_string()));
+                }
+                _ => {}
+            }
         }
 
-        println!("Transcribing audio via x.ai STT: {:?}", audio_file_path);
+        let mut audio_done = false;
+        let mut last_final_text = String::new();
 
-        let audio_data = std::fs::read(audio_file_path)
-            .map_err(|e| SttError::FileError(format!("Failed to read audio file: {}", e)))?;
-
-        let filename = audio_file_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("audio.wav");
-
-        // x.ai requires file to be the LAST field in multipart form
-        let form = reqwest::blocking::multipart::Form::new()
-            .text("language", "ja,en,zh")
-            .part(
-                "file",
-                reqwest::blocking::multipart::Part::bytes(audio_data)
-                    .file_name(filename.to_string())
-                    .mime_str("audio/wav")
-                    .map_err(|e| {
-                        SttError::FileError(format!("Failed to set MIME type: {}", e))
-                    })?,
-            );
-
-        let client = reqwest::blocking::Client::new();
-        let response = client
-            .post(XAI_STT_URL)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .multipart(form)
-            .send()
-            .map_err(|e| SttError::NetworkError(format!("Failed to send request: {}", e)))?;
-
-        let status = response.status();
-        let response_text = response
-            .text()
-            .map_err(|e| SttError::NetworkError(format!("Failed to read response: {}", e)))?;
-
-        if !status.is_success() {
-            return Err(SttError::ApiError(format!(
-                "x.ai STT returned status {}: {}",
-                status, response_text
-            )));
+        loop {
+            tokio::select! {
+                chunk = audio_rx.recv(), if !audio_done => {
+                    match chunk {
+                        Some(samples) => {
+                            let bytes = to_pcm16_bytes(&samples);
+                            ws_sink.send(Message::Binary(bytes.into()))
+                                .await
+                                .map_err(|e| SttError::NetworkError(e.to_string()))?;
+                        }
+                        None => {
+                            // chunk_senderがdrop = 録音停止 → audio.done送信
+                            println!("Audio done, sending audio.done to WebSocket");
+                            ws_sink.send(Message::Text(
+                                r#"{"type":"audio.done"}"#.to_string().into()
+                            ))
+                            .await
+                            .map_err(|e| SttError::NetworkError(e.to_string()))?;
+                            audio_done = true;
+                        }
+                    }
+                }
+                event_msg = ws_read.next() => {
+                    match event_msg {
+                        Some(Ok(Message::Text(text))) => {
+                            let event: WsEvent = match serde_json::from_str(&text) {
+                                Ok(e) => e,
+                                Err(e) => {
+                                    eprintln!("Failed to parse WS event: {} / raw: {}", e, text);
+                                    continue;
+                                }
+                            };
+                            match event.event_type.as_str() {
+                                "transcript.partial" => {
+                                    if let Some(ref t) = event.text {
+                                        let _ = result_tx.send(TranscriptionMessage::Partial(t.clone()));
+                                        if event.speech_final.unwrap_or(false) {
+                                            last_final_text = t.clone();
+                                        }
+                                    }
+                                }
+                                "transcript.done" => {
+                                    let text = event.text.unwrap_or_else(|| last_final_text.clone());
+                                    println!("Transcript done: {}", text);
+                                    let _ = result_tx.send(TranscriptionMessage::Success(
+                                        remove_punctuation(&text)
+                                    ));
+                                    return Ok(());
+                                }
+                                "error" => {
+                                    let msg = event.message.unwrap_or("Unknown WS error".to_string());
+                                    eprintln!("WS error event: {}", msg);
+                                    let _ = result_tx.send(TranscriptionMessage::Error(msg));
+                                    return Ok(());
+                                }
+                                _ => {}
+                            }
+                        }
+                        None | Some(Err(_)) => {
+                            if !last_final_text.is_empty() {
+                                let _ = result_tx.send(TranscriptionMessage::Success(
+                                    remove_punctuation(&last_final_text)
+                                ));
+                            } else {
+                                let _ = result_tx.send(TranscriptionMessage::Error(
+                                    "Connection closed unexpectedly".to_string()
+                                ));
+                            }
+                            return Ok(());
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
-
-        let transcription: TranscriptionResponse =
-            serde_json::from_str(&response_text).map_err(|e| {
-                SttError::ParseError(format!(
-                    "Failed to parse response: {}. Response was: {}",
-                    e, response_text
-                ))
-            })?;
-
-        println!("x.ai STT result: {}", transcription.text);
-        let text = remove_punctuation(&transcription.text);
-        println!("After punctuation removal: {}", text);
-        Ok(text)
     }
+}
+
+fn to_pcm16_bytes(samples: &[f32]) -> Vec<u8> {
+    samples
+        .iter()
+        .flat_map(|&s| {
+            let i = (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+            i.to_le_bytes()
+        })
+        .collect()
 }
 
 fn remove_punctuation(text: &str) -> String {
@@ -129,5 +215,15 @@ mod tests {
             remove_punctuation("それは、すごいですね！"),
             "それは すごいですね"
         );
+    }
+
+    #[test]
+    fn test_pcm_conversion() {
+        let samples = vec![0.0f32, 1.0, -1.0, 0.5];
+        let bytes = to_pcm16_bytes(&samples);
+        assert_eq!(bytes.len(), 8);
+        assert_eq!(i16::from_le_bytes([bytes[0], bytes[1]]), 0i16);
+        assert_eq!(i16::from_le_bytes([bytes[2], bytes[3]]), i16::MAX);
+        assert_eq!(i16::from_le_bytes([bytes[4], bytes[5]]), -i16::MAX);
     }
 }

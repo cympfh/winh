@@ -13,8 +13,8 @@ use global_hotkey::{
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
 use speech_to_text::SpeechToTextClient;
-use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver};
+use tokio::sync::mpsc::UnboundedReceiver;
 
 fn main() -> eframe::Result<()> {
     // Load config and apply command line arguments
@@ -67,8 +67,9 @@ fn main() -> eframe::Result<()> {
     )
 }
 
-enum TranscriptionMessage {
+pub enum TranscriptionMessage {
     InProgress,
+    Partial(String),
     Success(String),
     Error(String),
 }
@@ -81,14 +82,13 @@ struct WinhApp {
     audio_recorder: Option<AudioRecorder>,
     status_message: String,
     recording_info: String,
-    audio_file_path: Option<PathBuf>,
-
     // Config
     config: Config,
 
     // Background transcription
-    transcription_receiver: Option<Receiver<TranscriptionMessage>>,
+    transcription_receiver: Option<UnboundedReceiver<TranscriptionMessage>>,
     is_transcribing: bool,
+    tokio_runtime: Option<tokio::runtime::Runtime>,
 
     // Settings UI
     show_settings: bool,
@@ -168,7 +168,6 @@ impl WinhApp {
             audio_recorder: None,
             status_message: String::new(),
             recording_info: String::new(),
-            audio_file_path: None,
             settings_xai_api_key: config.xai_api_key.clone(),
             settings_silence_duration: config.silence_duration_secs,
             settings_silence_threshold: config.silence_threshold,
@@ -181,6 +180,7 @@ impl WinhApp {
             config,
             transcription_receiver: None,
             is_transcribing: false,
+            tokio_runtime: None,
             show_settings: false,
             last_error: None,
             hotkey_manager,
@@ -255,12 +255,15 @@ impl eframe::App for WinhApp {
         }
 
         // Check for transcription results
-        if let Some(receiver) = &self.transcription_receiver {
+        if let Some(receiver) = &mut self.transcription_receiver {
             if let Ok(message) = receiver.try_recv() {
                 match message {
                     TranscriptionMessage::InProgress => {
                         self.status_message = "Transcribing audio...".to_string();
                         self.last_error = None;
+                    }
+                    TranscriptionMessage::Partial(text) => {
+                        self.transcribed_text = text;
                     }
                     TranscriptionMessage::Success(text) => {
                         self.transcribed_text = text.clone();
@@ -366,12 +369,18 @@ impl eframe::App for WinhApp {
 
                         self.is_transcribing = false;
                         self.transcription_receiver = None;
+                        if let Some(rt) = self.tokio_runtime.take() {
+                            rt.shutdown_background();
+                        }
                     }
                     TranscriptionMessage::Error(error) => {
                         self.status_message = format!("❌ Transcription failed: {}", error);
                         self.last_error = Some(error.clone());
                         self.is_transcribing = false;
                         self.transcription_receiver = None;
+                        if let Some(rt) = self.tokio_runtime.take() {
+                            rt.shutdown_background();
+                        }
                         eprintln!("Transcription error: {}", error);
                     }
                 }
@@ -842,14 +851,7 @@ impl eframe::App for WinhApp {
         // Update recording info during recording and check for silence
         if self.is_recording {
             if let Some(recorder) = &self.audio_recorder {
-                let buffer_size = recorder.get_buffer_size();
-                let sample_rate = recorder.get_sample_rate();
-                let duration_secs = if sample_rate > 0 {
-                    buffer_size as f32 / sample_rate as f32
-                } else {
-                    0.0
-                };
-
+                let duration_secs = recorder.get_recording_duration();
                 let silence_elapsed = recorder.get_silence_duration().as_secs_f32();
 
                 self.recording_info = format!(
@@ -904,10 +906,23 @@ impl WinhApp {
                     .as_ref()
                     .filter(|name| name.as_str() != "Windows既定")
                     .map(|s| s.as_str());
-                match recorder.start_recording_with_device(device_name) {
+
+                let (chunk_tx, chunk_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
+
+                match recorder.start_recording_with_device(device_name, Some(chunk_tx)) {
                     Ok(_) => {
-                        self.status_message = "Recording... Speak now!".to_string();
+                        let sample_rate = recorder.get_sample_rate();
                         self.audio_recorder = Some(recorder);
+
+                        if self.config.xai_api_key.is_empty() {
+                            self.status_message =
+                                "Recording... (Set xAI API key to enable transcription)"
+                                    .to_string();
+                        } else {
+                            self.status_message = "Recording... Speak now!".to_string();
+                            self.start_streaming_transcription(sample_rate, chunk_rx);
+                        }
                     }
                     Err(e) => {
                         self.status_message = format!("Error: {}", e);
@@ -926,76 +941,52 @@ impl WinhApp {
 
     fn on_stop_recording(&mut self) {
         println!("Recording stopped");
-        self.status_message = "Processing audio...".to_string();
 
         if let Some(mut recorder) = self.audio_recorder.take() {
-            let audio_data = recorder.stop_recording();
-            let sample_rate = recorder.get_sample_rate();
+            recorder.stop_recording();
+            // stream drop → コールバッククロージャdrop → chunk_senderがdrop
+            // → UnboundedReceiver側がdisconnectを検知 → WebSocketタスクがaudio.doneを送信
+        }
 
-            println!("Recorded {} samples at {}Hz", audio_data.len(), sample_rate);
-            println!(
-                "Duration: {:.2} seconds",
-                audio_data.len() as f32 / sample_rate as f32
-            );
+        self.recording_info.clear();
 
-            if audio_data.is_empty() {
-                self.status_message = "No audio recorded".to_string();
-                self.recording_info.clear();
-                return;
-            }
-
-            // Save audio to WAV file
-            match recorder.save_audio_to_wav(&audio_data, sample_rate) {
-                Ok(path) => {
-                    let _duration = audio_data.len() as f32 / sample_rate as f32;
-                    self.audio_file_path = Some(path.clone());
-                    println!("Audio file saved: {:?}", path);
-
-                    // Check if API key is set
-                    if self.config.xai_api_key.is_empty() {
-                        self.status_message =
-                            "Audio saved. Set xAI API key in Settings to enable transcription."
-                                .to_string();
-                    } else {
-                        // Start transcription in background thread
-                        self.status_message = "Transcribing audio...".to_string();
-                        self.start_transcription(path);
-                    }
-                }
-                Err(e) => {
-                    self.status_message = format!("Failed to save audio: {}", e);
-                    eprintln!("Error saving audio: {}", e);
-                }
-            }
-
-            self.recording_info.clear();
+        if self.is_transcribing {
+            self.status_message = "Transcribing...".to_string();
         } else {
-            self.status_message = "No recording found".to_string();
+            self.status_message =
+                "Recording stopped. Set xAI API key in Settings to enable transcription."
+                    .to_string();
         }
     }
 
-    fn start_transcription(&mut self, audio_path: PathBuf) {
-        let (sender, receiver) = channel();
-        self.transcription_receiver = Some(receiver);
+    fn start_streaming_transcription(
+        &mut self,
+        sample_rate: u32,
+        chunk_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>,
+    ) {
+        let (msg_tx, msg_rx) =
+            tokio::sync::mpsc::unbounded_channel::<TranscriptionMessage>();
+        self.transcription_receiver = Some(msg_rx);
         self.is_transcribing = true;
+        let _ = msg_tx.send(TranscriptionMessage::InProgress);
 
-        let xai_api_key = self.config.xai_api_key.clone();
+        let api_key = self.config.xai_api_key.clone();
+        let tx = msg_tx.clone();
 
-        // Spawn background thread for transcription
-        std::thread::spawn(move || {
-            // Send InProgress message
-            let _ = sender.send(TranscriptionMessage::InProgress);
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
 
-            let client = SpeechToTextClient::new(xai_api_key);
-            match client.transcribe_audio(&audio_path) {
-                Ok(text) => {
-                    let _ = sender.send(TranscriptionMessage::Success(text));
-                }
-                Err(e) => {
-                    let _ = sender.send(TranscriptionMessage::Error(e.to_string()));
-                }
+        rt.spawn(async move {
+            let client = SpeechToTextClient::new(api_key);
+            if let Err(e) = client.stream_transcribe(sample_rate, chunk_rx, tx.clone()).await {
+                let _ = tx.send(TranscriptionMessage::Error(e.to_string()));
             }
         });
+
+        self.tokio_runtime = Some(rt);
     }
 }
 

@@ -11,12 +11,12 @@ repository = "https://github.com/cympfh/winh"
 eframe = "0.29"
 egui = "0.29"
 cpal = "0.15"
-hound = "3.5"
-tempfile = "3.8"
-reqwest = { version = "0.12", features = ["blocking", "multipart", "json"] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
 dirs = "5.0"
 arboard = "3.3"
 image = { version = "0.24", default-features = false, features = ["png"] }
