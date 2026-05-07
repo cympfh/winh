@@ -30,6 +30,9 @@ build-windows-release: setup-windows-target
 	@echo ""
 	@echo "Release executable created at: target/x86_64-pc-windows-gnu/release/winh.exe"
 
+run: build-windows-release
+	./target/x86_64-pc-windows-gnu/release/winh.exe
+
 # Clean build artifacts
 clean:
 	cargo clean
