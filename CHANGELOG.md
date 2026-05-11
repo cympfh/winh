@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-11
+
+### Added
+- WebSocket ストリーミング STT 対応（x.ai `wss://api.x.ai/v1/stt`）でリアルタイム書き起こし
+- VRChat chatbox 送信時にユーザー発言 (`> `) と Eliza 発言 (`AI> `) のプレフィックスを追加
+- "📝 call QvPen" ボタンを追加（VRChat ウィンドウをフォーカスして Tab+Q を送信）
+
+### Fixed
+- ストリーミング STT で `transcript.done` が空テキストで来た際に `last_seen_text` へフォールバックするよう修正
+- 空文字確定時に VRChat・Eliza へ送信しないようガードを追加
+
+### Changed
+- `src/text_to_speech.rs` を `src/speech_to_text.rs` にリネーム（`SpeechToTextClient` クラス）
+- ウィンドウ高さを 460 → 510 に拡大
+
+(git commit: 9ef2a50)
+
 ## [0.3.0] - 2026-04-22
 
 ### Added
