@@ -27,7 +27,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([380.0, 460.0])
+            .with_inner_size([380.0, 510.0])
             .with_resizable(true)
             .with_icon(icon_data),
         ..Default::default()
@@ -830,6 +830,16 @@ impl eframe::App for WinhApp {
                             let eliza_changed = ui
                                 .checkbox(&mut self.config.eliza_enabled, "Send to Eliza")
                                 .changed();
+
+                            // call QvPen button
+                            if ui
+                                .add(egui::Button::new("📝 call QvPen").small())
+                                .clicked()
+                            {
+                                if let Err(e) = auto_input::call_qvpen() {
+                                    eprintln!("call_qvpen error: {}", e);
+                                }
+                            }
 
                             // Save config if any checkbox changed
                             if clipboard_changed

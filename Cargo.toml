@@ -24,5 +24,8 @@ global-hotkey = "0.6"
 enigo = "0.6.1"
 rosc = "0.10"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
 [build-dependencies]
 winres = "0.1"

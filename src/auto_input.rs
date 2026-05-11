@@ -2,6 +2,49 @@ use enigo::{Enigo, Key, Keyboard, Settings};
 use std::thread;
 use std::time::Duration;
 
+pub fn call_qvpen() -> Result<(), String> {
+    thread::spawn(|| {
+        if let Err(e) = call_qvpen_sync() {
+            eprintln!("call_qvpen failed: {}", e);
+        }
+    });
+    Ok(())
+}
+
+#[cfg(windows)]
+fn call_qvpen_sync() -> Result<(), String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow};
+
+    let title: Vec<u16> = "VRChat\0".encode_utf16().collect();
+    let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+    if hwnd.is_null() {
+        return Err("VRChat window not found".to_string());
+    }
+    unsafe { SetForegroundWindow(hwnd) };
+
+    thread::sleep(Duration::from_millis(200));
+
+    let mut enigo =
+        Enigo::new(&Settings::default()).map_err(|e| format!("Failed to create Enigo: {:?}", e))?;
+
+    enigo
+        .key(Key::Tab, enigo::Direction::Press)
+        .map_err(|e| format!("Failed to press Tab: {:?}", e))?;
+    enigo
+        .key(Key::Unicode('q'), enigo::Direction::Click)
+        .map_err(|e| format!("Failed to press Q: {:?}", e))?;
+    enigo
+        .key(Key::Tab, enigo::Direction::Release)
+        .map_err(|e| format!("Failed to release Tab: {:?}", e))?;
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn call_qvpen_sync() -> Result<(), String> {
+    Err("call_qvpen is only supported on Windows".to_string())
+}
+
 /// Types text character-by-character into the currently focused window
 /// This function is non-blocking and spawns a background thread
 pub fn type_text(text: &str) -> Result<(), String> {
