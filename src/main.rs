@@ -292,7 +292,7 @@ impl eframe::App for WinhApp {
                         }
 
                         // Conditional VRChat OSC send
-                        if self.config.vrchat_enabled {
+                        if self.config.vrchat_enabled && !text.is_empty() {
                             let client = vrchat::VRChatClient::new();
                             match client.send_message(&text) {
                                 Ok(_) => {
@@ -307,7 +307,7 @@ impl eframe::App for WinhApp {
                         }
 
                         // Conditional eliza-agent-server send (background)
-                        if self.eliza_mode {
+                        if self.eliza_mode && !text.is_empty() {
                             let eliza_url = self.config.eliza_url.clone();
                             let eliza_text = text.clone();
                             let (eliza_sender, eliza_receiver) =

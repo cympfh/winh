@@ -13,7 +13,6 @@ struct WsEvent {
     #[serde(rename = "type")]
     event_type: String,
     text: Option<String>,
-    speech_final: Option<bool>,
     message: Option<String>,
 }
 
@@ -102,7 +101,7 @@ impl SpeechToTextClient {
         }
 
         let mut audio_done = false;
-        let mut last_final_text = String::new();
+        let mut last_seen_text = String::new();
 
         loop {
             tokio::select! {
@@ -139,14 +138,16 @@ impl SpeechToTextClient {
                             match event.event_type.as_str() {
                                 "transcript.partial" => {
                                     if let Some(ref t) = event.text {
-                                        let _ = result_tx.send(TranscriptionMessage::Partial(t.clone()));
-                                        if event.speech_final.unwrap_or(false) {
-                                            last_final_text = t.clone();
+                                        if !t.is_empty() {
+                                            last_seen_text = t.clone();
                                         }
+                                        let _ = result_tx.send(TranscriptionMessage::Partial(t.clone()));
                                     }
                                 }
                                 "transcript.done" => {
-                                    let text = event.text.unwrap_or_else(|| last_final_text.clone());
+                                    let text = event.text
+                                        .filter(|t| !t.is_empty())
+                                        .unwrap_or_else(|| last_seen_text.clone());
                                     println!("Transcript done: {}", text);
                                     let _ = result_tx.send(TranscriptionMessage::Success(
                                         remove_punctuation(&text)
@@ -163,9 +164,9 @@ impl SpeechToTextClient {
                             }
                         }
                         None | Some(Err(_)) => {
-                            if !last_final_text.is_empty() {
+                            if !last_seen_text.is_empty() {
                                 let _ = result_tx.send(TranscriptionMessage::Success(
-                                    remove_punctuation(&last_final_text)
+                                    remove_punctuation(&last_seen_text)
                                 ));
                             } else {
                                 let _ = result_tx.send(TranscriptionMessage::Error(
