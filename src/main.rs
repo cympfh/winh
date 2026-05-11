@@ -67,6 +67,9 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+const USER_PREFIX: &str = "> ";
+const ELIZA_PREFIX: &str = "AI> ";
+
 pub enum TranscriptionMessage {
     InProgress,
     Partial(String),
@@ -201,7 +204,7 @@ impl eframe::App for WinhApp {
                     Ok(response) => {
                         println!("[Eliza] Response received → send to VRChat: {}", response);
                         let client = vrchat::VRChatClient::new();
-                        if let Err(e) = client.send_message(&response) {
+                        if let Err(e) = client.send_message(&format!("{}{}", ELIZA_PREFIX, response)) {
                             eprintln!("[Eliza] Failed to send response to VRChat: {}", e);
                         }
                     }
@@ -294,7 +297,7 @@ impl eframe::App for WinhApp {
                         // Conditional VRChat OSC send
                         if self.config.vrchat_enabled && !text.is_empty() {
                             let client = vrchat::VRChatClient::new();
-                            match client.send_message(&text) {
+                            match client.send_message(&format!("{}{}", USER_PREFIX, text)) {
                                 Ok(_) => {
                                     status_parts.push("sent to VRChat");
                                     println!("Text sent to VRChat via OSC: {}", text);
